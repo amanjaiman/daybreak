@@ -13,18 +13,30 @@ npm run dev
 
 Open http://localhost:5173.
 
-> Note: the Concerts card uses the Vite dev-server proxy to reach Bandsintown
-> (their API doesn't allow browser requests directly). If you deploy a
-> production build, add an equivalent rewrite on your host — e.g. a Vercel
-> rewrite from `/api/bandsintown/*` to `https://rest.bandsintown.com/*`.
+> Note: the Concerts, Football, and Stocks cards proxy their APIs through the
+> Vite dev server (`vite.config.ts`), since Bandsintown, ESPN, and Yahoo
+> Finance don't send CORS headers for browser requests. The Reading queue's
+> title/favicon enrichment (`/api/unfurl`) works the same way — it fetches
+> each saved page directly, so no third-party unfurl service ever sees your
+> saved URLs. All four only run under `vite dev` by default.
 
-> Note: the Reading queue fetches each saved page's real `<title>` and
-> favicon via a small dev-server middleware (`/api/unfurl` in
-> `vite.config.ts`) that requests the page directly — no third-party unfurl
-> service ever sees your saved URLs. It only runs under `vite dev`; on a
-> static production host it falls back gracefully to a humanized title
-> guessed from the URL, no favicon. Porting it needs a serverless function
-> that does the same fetch-and-parse server-side.
+## Deploying to Netlify
+
+`netlify.toml` is already set up — connect the repo and deploy as-is, no
+environment variables needed (every data source above is keyless).
+
+- The Bandsintown/ESPN/Yahoo proxies become `[[redirects]]` rewrites in
+  `netlify.toml`.
+- `/api/unfurl` is instead a real serverless function at
+  [`netlify/functions/unfurl.ts`](netlify/functions/unfurl.ts), doing the
+  same server-side fetch-and-parse as the dev middleware. It's intentionally
+  self-contained (no imports outside `netlify/functions/`) so Netlify's
+  function bundler doesn't need to resolve paths elsewhere in the repo.
+
+Deploying to a host other than Netlify (Vercel, Cloudflare Pages, …) needs
+equivalent rewrites for the three proxies plus a serverless function for
+`/api/unfurl` — without it, saved links still work, just falling back to a
+humanized title guessed from the URL with no favicon.
 
 ## Make it yours
 

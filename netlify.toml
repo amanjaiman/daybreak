@@ -1,0 +1,31 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+# Bandsintown, ESPN, and Yahoo Finance don't send CORS headers for browser
+# requests. These mirror the Vite dev-server proxy in vite.config.ts.
+[[redirects]]
+  from = "/api/bandsintown/*"
+  to = "https://rest.bandsintown.com/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/espn/*"
+  to = "https://site.api.espn.com/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/yahoo/*"
+  to = "https://query1.finance.yahoo.com/:splat"
+  status = 200
+  force = true
+
+# Reading-queue link enrichment (title + favicon) — see netlify/functions/unfurl.ts.
+[[redirects]]
+  from = "/api/unfurl"
+  to = "/.netlify/functions/unfurl"
+  status = 200
+  force = true
