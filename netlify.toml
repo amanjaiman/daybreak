@@ -29,3 +29,11 @@
   to = "/.netlify/functions/unfurl"
   status = 200
   force = true
+
+# "Generate Widget" (OpenAI) — see netlify/functions/generate-widget.ts.
+# Requires OPENAI_API_KEY (and optionally OPENAI_MODEL) in the site env.
+[[redirects]]
+  from = "/api/generate-widget"
+  to = "/.netlify/functions/generate-widget"
+  status = 200
+  force = true

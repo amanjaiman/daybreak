@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { config } from "../config";
 import { DEFAULT_BOARD, normalizeBoard } from "./board";
-import type { CardId } from "./board";
+import type { BoardId, CustomId } from "./board";
 
 export type Topic = { id: string; label: string; query: string };
 export type League = { slug: string; label: string };
@@ -14,7 +14,7 @@ export type Settings = {
   name: string;
   layout: Layout;
   theme: Theme;
-  board: CardId[][];
+  board: BoardId[][];
   location: { label: string; latitude: number; longitude: number };
   topics: Topic[];
   nbaTeam: { espnId: string; name: string };
@@ -40,11 +40,25 @@ const defaults: Settings = {
 
 const STORAGE_KEY = "daybreak.settings";
 
+// Generated-widget ids referenced by the saved board only survive
+// normalization if the widget itself still exists. Read straight from
+// localStorage (not via lib/customWidgets) to avoid a circular import.
+function storedCustomIds(): CustomId[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem("daybreak.customWidgets") ?? "[]") as { id?: string }[];
+    return (Array.isArray(raw) ? raw : [])
+      .map((w) => w?.id)
+      .filter((id): id is CustomId => typeof id === "string" && id.startsWith("custom:"));
+  } catch {
+    return [];
+  }
+}
+
 function load(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const merged = raw ? { ...defaults, ...(JSON.parse(raw) as Partial<Settings>) } : defaults;
-    return { ...merged, board: normalizeBoard(merged.board) };
+    return { ...merged, board: normalizeBoard(merged.board, storedCustomIds()) };
   } catch {
     return defaults;
   }

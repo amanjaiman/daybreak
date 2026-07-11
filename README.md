@@ -20,13 +20,23 @@ Open http://localhost:5173.
 > each saved page directly, so no third-party unfurl service ever sees your
 > saved URLs. All four only run under `vite dev` by default.
 
+To use **Generate Widget** (the sparkle in the floating bubble menu) locally,
+copy `.env.example` to `.env` and set `OPENAI_API_KEY` — it's the one feature
+that needs a key. Everything else works without it.
+
 ## Deploying to Netlify
 
-`netlify.toml` is already set up — connect the repo and deploy as-is, no
-environment variables needed (every data source above is keyless).
+`netlify.toml` is already set up — connect the repo and deploy as-is. The
+built-in cards need no environment variables (every data source above is
+keyless); set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) in the site
+env to enable Generate Widget.
 
 - The Bandsintown/ESPN/Yahoo proxies become `[[redirects]]` rewrites in
   `netlify.toml`.
+- `/api/generate-widget` is a serverless function at
+  [`netlify/functions/generate-widget.ts`](netlify/functions/generate-widget.ts)
+  that asks the OpenAI API to design a widget matching Daybreak's look; the
+  result is stored (and runs) entirely in your browser's localStorage.
 - `/api/unfurl` is instead a real serverless function at
   [`netlify/functions/unfurl.ts`](netlify/functions/unfurl.ts), doing the
   same server-side fetch-and-parse as the dev middleware. It's intentionally
@@ -53,6 +63,11 @@ Everything is editable in the app itself — no file editing needed:
   "anywhere".
 - **Football** — **Edit** shows a checklist of competitions.
 - **Stocks** — **Edit** to add/remove tickers.
+- **Anything else** — hover the Daybreak bubble (bottom right) and pick
+  **Generate widget**: describe what you want ("track my friends' birthdays")
+  and an AI-built widget matching Daybreak's design is added to your board.
+  The bubble menu is also where you switch between the Dashboard and Flow
+  layouts and toggle light/dark mode.
 
 All choices persist in localStorage. [`src/config.ts`](src/config.ts) only
 provides the defaults used on first run.
@@ -74,3 +89,4 @@ hours. A failed refresh keeps the last good data on screen.
 | Shows | Bandsintown (+ Open-Meteo geocoding for city lookup) | No |
 | Stocks | Yahoo Finance | No |
 | Todos, Reading queue | localStorage | — |
+| Generated widgets | OpenAI API (generation only; widgets run locally) | `OPENAI_API_KEY`, server-side |
