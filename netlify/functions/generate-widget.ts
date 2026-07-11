@@ -65,6 +65,10 @@ export async function generateWidget(prompt: string, apiKey: string): Promise<Ge
     },
     body: JSON.stringify({
       model,
+      // Default (medium) reasoning pushed generation past 60s — beyond
+      // Netlify's synchronous function timeout. Low keeps codegen quality
+      // while finishing well inside it.
+      reasoning_effort: process.env.OPENAI_REASONING_EFFORT || "low",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
