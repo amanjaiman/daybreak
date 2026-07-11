@@ -1445,7 +1445,151 @@ button {
   color: var(--ink-3);
 }
 
-/* -------------------------------------------------------- custom widgets */
+/* -------------------------------------------------------- custom widgets
+   The gw-* kit below is what generated widget bodies are composed from —
+   prebuilt blocks matching the built-in cards' patterns, so AI output can't
+   drift off the design system. Documented in the generation system prompt
+   (netlify/functions/generate-widget.ts); keep the two in sync. */
+
+/* Hero stat, modeled on the weather card's temperature row. */
+.gw-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 2px 0 10px;
+}
+
+.gw-hero__value {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 450;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gw-hero__desc {
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+
+.gw-hero__desc b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Label-left / value-right rows, shared by stats and list items. */
+.gw-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+
+.gw-row:last-child { border-bottom: none; }
+
+.gw-row .l {
+  min-width: 0;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gw-row .v {
+  flex: none;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+
+.gw-up { color: var(--positive); font-weight: 600; }
+.gw-down { color: var(--live); font-weight: 600; }
+
+/* Sized home for the SVG that widget.sparkline() returns. */
+.gw-spark {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin: 4px 0 2px;
+}
+
+.gw-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 8px;
+}
+
+.gw-input {
+  flex: 1;
+  min-width: 90px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.gw-input::placeholder { color: var(--ink-3); }
+.gw-input:focus { border-color: var(--border-strong); }
+
+.gw-btn {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: opacity 120ms ease;
+}
+
+.gw-btn:hover { opacity: 0.85; }
+.gw-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Bottom line: meta (source · date) left, settings affordance right.
+   The meta can only ever be one line — it ellipsizes instead of wrapping. */
+.gw-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.gw-foot__meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gw-change {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--ink-3);
+  transition: color 120ms ease;
+}
+
+.gw-change:hover { color: var(--accent); }
 
 .widget__emoji {
   font-size: 14px;

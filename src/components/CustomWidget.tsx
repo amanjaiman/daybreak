@@ -16,8 +16,36 @@ type WidgetApi = {
   getJSON: (url: string) => Promise<unknown>;
   ai: (request: string) => Promise<unknown>;
   esc: (s: unknown) => string;
+  sparkline: (values: number[]) => string;
   refresh: () => void;
 };
+
+/**
+ * Finished sparkline markup for generated widgets — the one chart style the
+ * design system allows (accent polyline, soft area fill, no axes or labels).
+ * Provided as a helper so generated scripts can't hand-roll off-brand charts.
+ */
+function sparklineSVG(values: number[]): string {
+  const nums = (Array.isArray(values) ? values : []).map(Number).filter((n) => Number.isFinite(n));
+  if (nums.length < 2) return "";
+  const W = 100;
+  const H = 32;
+  const PAD = 2;
+  const min = Math.min(...nums);
+  const span = Math.max(...nums) - min || 1;
+  const pts = nums.map((v, i) => [
+    (PAD + (i / (nums.length - 1)) * (W - PAD * 2)).toFixed(2),
+    (PAD + (1 - (v - min) / span) * (H - PAD * 2)).toFixed(2),
+  ]);
+  const line = pts.map((p) => p.join(",")).join(" ");
+  const area = `M${pts[0][0]},${H} L${pts.map((p) => p.join(",")).join(" L")} L${pts[pts.length - 1][0]},${H} Z`;
+  return (
+    `<svg class="gw-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">` +
+    `<path d="${area}" fill="var(--accent)" fill-opacity="0.08"/>` +
+    `<polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `</svg>`
+  );
+}
 
 // djb2 — good enough to key an ai() response cache by request text.
 function hash(s: string): string {
@@ -99,6 +127,7 @@ function makeApi(
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;"),
+    sparkline: sparklineSVG,
     refresh,
   };
 }

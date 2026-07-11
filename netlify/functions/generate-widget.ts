@@ -34,12 +34,13 @@ Your script receives one argument named \`widget\`:
 - \`widget.getJSON(url)\` — fetch a URL and parse JSON (throws on non-2xx). CORS is handled for you: cross-origin failures automatically retry through a server-side proxy, so ANY keyless public JSON API works.
 - \`widget.ai(request)\` — ask an AI with LIVE WEB SEARCH for real-world data, returned as parsed JSON. See "Getting data" below.
 - \`widget.esc(value)\` — HTML-escape a value. ALWAYS use it when interpolating user input or fetched data into markup.
+- \`widget.sparkline(numbers)\` — returns finished, on-brand SVG markup for a trend line. The only way to draw a chart.
 - \`widget.refresh()\` — resets the card to your html and reruns your whole script.
 
 ## Getting data — make the widget as smart as the built-in ones
 The built-in cards (weather, news, stocks) fetch real data automatically; generated widgets must feel the same. Pick the FIRST workable option:
 1. \`widget.getJSON(url)\` for data with a free, keyless public JSON API (e.g. open-meteo.com weather + geocoding, frankfurter.dev FX, api.coingecko.com crypto, hacker-news.firebaseio.com). Don't invent endpoints — only use APIs you're confident exist.
-2. \`widget.ai(request)\` for real-world data with NO keyless API: local prices (gas, groceries, rent), rankings, schedules, release dates, statistics, recommendations. The request must state the data needed AND the exact JSON shape, e.g.: 'Average regular gasoline price near ZIP 20171, now and roughly over the last 30 days. Respond ONLY with JSON: {"areaLabel": string, "currentUsd": number, "monthAvgUsd": number, "trend": "rising"|"falling"|"flat", "asOf": "YYYY-MM-DD"}'. Request only data that realistically appears in public sources: current figures, recent averages, a trend direction, top-N lists. NEVER ask for day-by-day or hour-by-hour historical series — ask for summary stats (current, 30-day average, trend) instead; that is also all a small card can show.
+2. \`widget.ai(request)\` for real-world data with NO keyless API: local prices (gas, groceries, rent), rankings, schedules, release dates, statistics, recommendations. The request must state the data needed AND the exact JSON shape, e.g.: 'Average regular gasoline price near ZIP <stored zip>, now and roughly over the last 30 days. Respond ONLY with JSON: {"areaLabel": string (short place name), "currentUsd": number, "monthAvgUsd": number, "trend": "rising"|"falling"|"flat", "source": string (short, e.g. "AAA"), "asOf": "YYYY-MM-DD"}'. Always request a short "source" + date and show them in the footer meta. Request only data that realistically appears in public sources: current figures, recent averages, a trend direction, top-N lists. NEVER ask for day-by-day or hour-by-hour historical series — ask for summary stats (current, 30-day average, trend) instead; that is also all a small card can show.
 3. Manual entry ONLY for inherently personal data (todos, birthdays, habits, journal-style notes). NEVER make the user hand-enter public data like prices, scores, or weather — that is a failed widget.
 
 widget.ai rules (it is slow, ~10-30s, and metered):
@@ -54,28 +55,34 @@ If the widget needs the user's location, team, or similar input: ask once with a
 - Widgets that fetch data should set refreshMs — usually 600000-1800000 for getJSON polling, and at least 3600000 (1h) for ai-backed data (the cache rule above keeps reruns cheap) — and always show graceful loading and error states.
 - For user-entered data widgets (trackers, lists, counters): render an add form plus the stored items, with a way to delete items. Follow the pattern: read store -> render -> wire events -> on change, store.set then re-render. If a form has more than one input, include a submit button — Enter only implicitly submits single-input forms.
 
-## Daybreak's look (match it exactly)
-The card shell (title bar, border, padding) is provided — you only produce the body. Base font is Inter 14px, already applied. Use ONLY these CSS custom properties for color, never hex/rgb: var(--ink) primary text, var(--ink-2) secondary, var(--ink-3) muted/labels, var(--accent) the single amber accent (use sparingly: hover states, one highlight), var(--border) hairlines, var(--border-strong), var(--surface) card bg, var(--surface-2) recessed bg, var(--hover) row hover wash, var(--positive) green, var(--live) red, var(--radius-sm) 9px radius, var(--font-display) serif for one big editorial number/word if the widget has a hero stat.
-Existing classes you may use: "empty" (centered italic serif empty-state message), "muted", "pill" (small rounded tag), "pill--accent", "list__toggle" (quiet full-width text button), "skeleton" (loading shimmer block — give it inline height/width).
-List rows: padding-block 8px, border-bottom 1px solid var(--border) (none on last), font-size 13.5px, and on hover background var(--hover) with margin-inline -10px / padding-inline 10px so the wash bleeds past the text.
-Inputs: 1px solid var(--border) border, var(--radius-sm) radius, background var(--surface), padding 7px 10px, font inherit at 13.5px, color var(--ink), outline none, border-color var(--border-strong) on focus.
-Buttons: quiet text buttons in var(--ink-3) that turn var(--accent) on hover; or a solid primary (background var(--ink), color var(--surface), radius var(--radius-sm), padding 6px 12px, font-weight 600, font-size 12.5px).
-Small labels: 11-12px, font-weight 600, letter-spacing 0.07em, uppercase, var(--ink-3).
-Style via inline style attributes or by setting el.style in the script.
+## Build the body from the Daybreak kit (required)
+The card shell (title bar, border, padding, refresh button) is provided — you only produce the body, and you compose it ONLY from these prebuilt blocks. They are the exact patterns the built-in cards use, so following them is what makes a widget look native. Do NOT hand-roll layout: no absolute positioning, no floats, no hand-written flex/margin/font CSS. Inline styles are for rare tiny tweaks (an input's width, a text-align), never for layout or typography.
 
-## Composition — a widget must LOOK like it shipped with Daybreak
-The card is glanceable, not a report. It lives in a ~320px-wide column; aim for under ~300px tall.
-- Model data widgets on Daybreak's weather card: one HERO row (the key number big in var(--font-display) serif, 30-40px, weight 450, tabular-nums, with a short 12-13px var(--ink-2) description beside it), then AT MOST ONE supporting section (a compact list, a sparkline, or a small stat strip — not several).
-- Say each thing ONCE. Never show the same data as both a chart and a list of numbers — pick whichever reads faster. Never render the same control twice.
-- The card header already gives the user a Refresh button whenever refreshMs is set — NEVER render your own refresh/reload control.
-- Settings (location, team, units) get ONE quiet affordance: a single 12px muted line or small pill showing the current value with a "change" text-button beside it, ideally at the very top or bottom — not a labeled form row that competes with the data.
-- Meta info (source, "as of" date, substitution notes) is ONE inline muted line, 11.5px var(--ink-3), at the very bottom. Keep it short ("AAA · state avg · Jul 11"); never let it wrap into a column or sit beside buttons.
-- Lists: max ~5 rows (list__toggle to expand), each row a single flex line: label left, value right, 13-13.5px, padding-block 8px, hairline between rows. No bold-on-everything — one emphasized element per row.
-- Sparklines/charts: inline SVG, full width, height 28-40px, a single 1.5-2px var(--accent) polyline (optionally a subtle fill: var(--accent) at ~8% via fill-opacity), NO axes, gridlines, background blocks, or point markers. Label at most the first and last x-values, 10.5px var(--ink-3), INSIDE the card's width (inset the polyline ~4px so nothing clips).
-- Whitespace: separate sections with 10-12px gaps or one hairline — not both, and no big empty bands. Every element must earn its space; when in doubt, leave it out.
-- Vertical alignment: build rows with display:flex + align-items:center + gap; never rely on floats or absolute positioning for layout.
+Blocks (copy the markup exactly, classes included):
+- Hero stat — the ONE key figure, always first in a data widget:
+  <div class="gw-hero"><span class="gw-hero__value">$3.82</span><span class="gw-hero__desc"><b>30-day average</b>Herndon, VA</span></div>
+  The desc is two SHORT lines (each under ~24 chars): what the number is, then where/when. Provenance or substitution notes never go here — condense them into the footer meta.
+- Stat row — label left, value right; stack 2-4 of them:
+  <div class="gw-row"><span class="l">Current</span><span class="v">$3.89</span></div>
+  Wrap a value in <span class="gw-up">▲ 2.1%</span> / <span class="gw-down">▼ 0.8%</span> for green/red movement.
+- Sparkline — insert the return value of widget.sparkline([3.72, 3.75, …]) as-is; it is finished SVG markup. NEVER draw your own chart, and never add axis labels, tick marks, or captions to it.
+- List item (trackers, feeds) — the same gw-row: escaped content in .l, a value or a delete "×" button in .v. Cap at 5 rows with class="list__toggle" ("Show all N") to expand.
+- Add form:
+  <form class="gw-form"><input class="gw-input" placeholder="Name"><button class="gw-btn" type="submit">Add</button></form>
+- Footer — settings + meta in one line, ALWAYS the last element whenever the widget has a data source or a stored setting:
+  <div class="gw-foot"><span class="gw-foot__meta">AAA · Jul 11</span><button class="gw-change" type="button">20871 · change</button></div>
+  The meta stays under ~40 characters and names the actual source ("AAA · Jul 11", "EIA regional avg · Jul 11") — never a literal placeholder like "source". The change button shows the stored setting; clicking it swaps the footer content for a gw-form to edit it.
+- Empty state: <div class="empty">Nothing yet.</div> · Loading: <div class="skeleton" style="height:52px"></div> · Small tag: class="pill" or "pill--accent".
 
-Dates: format compactly ("Mar 14", "in 3 days", "2h ago"). Numbers: use font-variant-numeric: tabular-nums for aligned figures.
+All literal values in these examples ($3.82, Herndon, 20871, AAA…) are placeholders — never reuse them as defaults or output. If the widget needs a user setting (location, team, …) and widget.store has none yet, the FIRST render is a gw-form asking for it (with class="empty" line explaining why); never assume or invent a value.
+
+Standard shapes — pick the one that fits and follow it exactly:
+- Data widget (fetches anything): gw-hero, then ONE of (sparkline | 2-4 gw-rows | a 5-row list), then gw-foot. Nothing else.
+- Tracker widget (user-entered): gw-form, then the list, then gw-foot only if there is a setting.
+Everything appears once — one hero, one supporting block, one footer, and never a refresh control of your own (the card header has one).
+
+If you must color something beyond the kit, use only CSS tokens, never hex/rgb: var(--ink) text, var(--ink-2) secondary, var(--ink-3) muted, var(--accent) amber (sparingly), var(--border), var(--surface), var(--surface-2), var(--positive) green, var(--live) red, var(--radius-sm).
+Dates: format compactly ("Mar 14", "in 3 days", "2h ago"). Numbers: keep units short ("$3.82", "72°", "4.1M").
 
 Respond with ONLY the JSON object.`;
 
