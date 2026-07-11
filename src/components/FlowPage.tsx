@@ -9,6 +9,8 @@ import { useQuotes } from "./Stocks";
 import { loadTopic } from "./News";
 import { Todos } from "./Todos";
 import { ReadingQueue } from "./ReadingQueue";
+import { useCustomWidgets } from "../lib/customWidgets";
+import { CustomWidgetCard } from "./CustomWidget";
 
 /**
  * The "Flow" layout: one narrow column that reads top to bottom, ordered by
@@ -36,6 +38,7 @@ function Section({ label, children }: { label: ReactNode; children: ReactNode })
 
 export function FlowPage() {
   const { settings } = useSettings();
+  const { widgets } = useCustomWidgets();
   const weather = useWeather(settings.location.latitude, settings.location.longitude);
   const matches = useMatches(settings.soccerLeagues);
   const shows = useUpcomingShows(settings.concertRadiusMiles);
@@ -186,6 +189,17 @@ export function FlowPage() {
           </div>
         </Section>
       ),
+    });
+  }
+
+  // Generated widgets read as compact sections between markets and the
+  // forecast — the flow CSS strips their card chrome like everything else.
+  for (const widget of widgets) {
+    sections.push({
+      key: widget.id,
+      weight: 8.5,
+      compact: true,
+      node: <CustomWidgetCard widget={widget} />,
     });
   }
 

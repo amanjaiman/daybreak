@@ -29,3 +29,25 @@
   to = "/.netlify/functions/unfurl"
   status = 200
   force = true
+
+# "Generate Widget" (OpenAI) — see netlify/functions/generate-widget.ts.
+# Requires OPENAI_API_KEY (and optionally OPENAI_MODEL) in the site env.
+[[redirects]]
+  from = "/api/generate-widget"
+  to = "/.netlify/functions/generate-widget"
+  status = 200
+  force = true
+
+# Generated-widget runtime data: widget.ai() lookups (OpenAI + web search)
+# and the JSON CORS-fallback proxy for widget.getJSON().
+[[redirects]]
+  from = "/api/widget-data"
+  to = "/.netlify/functions/widget-data"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/proxy"
+  to = "/.netlify/functions/proxy"
+  status = 200
+  force = true

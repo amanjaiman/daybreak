@@ -1,6 +1,10 @@
-import { defineConfig } from 'vite'
+import { readFileSync } from 'node:fs'
+import { defineConfig, loadEnv } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { generateWidget } from './netlify/functions/generate-widget.ts'
+import { fetchWidgetData } from './netlify/functions/widget-data.ts'
+import { proxyJSON } from './netlify/functions/proxy.ts'
 
 function isBlockedHost(hostname: string): boolean {
   const h = hostname.toLowerCase()
@@ -101,31 +105,134 @@ function unfurlPlugin(): Plugin {
   }
 }
 
+// Dev-server twin of netlify/functions/generate-widget.ts — same
+// generateWidget() core, so the prompt and validation aren't duplicated.
+// The key comes from .env (gitignored) or the shell environment.
+function generateWidgetPlugin(apiKey: string | undefined): Plugin {
+  return {
+    name: 'daybreak-generate-widget',
+    configureServer(server) {
+      server.middlewares.use('/api/generate-widget', async (req, res) => {
+        const respond = (status: number, body: unknown) => {
+          res.statusCode = status
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify(body))
+        }
+        if (req.method !== 'POST') return respond(405, { error: 'POST only' })
+        if (!apiKey) {
+          return respond(503, {
+            error: "Widget generation isn't configured — set OPENAI_API_KEY in .env and restart the dev server.",
+          })
+        }
+        let prompt: unknown
+        try {
+          const chunks: Buffer[] = []
+          for await (const chunk of req) chunks.push(chunk as Buffer)
+          prompt = (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { prompt?: unknown }).prompt
+        } catch {
+          return respond(400, { error: 'Invalid JSON body' })
+        }
+        if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 2000) {
+          return respond(400, { error: 'Describe the widget in 1-2000 characters.' })
+        }
+        try {
+          respond(200, await generateWidget(prompt.trim(), apiKey))
+        } catch (err) {
+          respond(502, { error: err instanceof Error ? err.message : 'Widget generation failed' })
+        }
+      })
+    },
+  }
+}
+
+// Dev-server twins of netlify/functions/widget-data.ts and proxy.ts —
+// runtime data plumbing for generated widgets (widget.ai and the CORS
+// fallback inside widget.getJSON).
+function widgetDataPlugin(apiKey: string | undefined): Plugin {
+  return {
+    name: 'daybreak-widget-data',
+    configureServer(server) {
+      server.middlewares.use('/api/widget-data', async (req, res) => {
+        const respond = (status: number, body: unknown) => {
+          res.statusCode = status
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify(body))
+        }
+        if (req.method !== 'POST') return respond(405, { error: 'POST only' })
+        if (!apiKey) return respond(503, { error: "Data lookups aren't configured (OPENAI_API_KEY is not set)." })
+        let prompt: unknown
+        try {
+          const chunks: Buffer[] = []
+          for await (const chunk of req) chunks.push(chunk as Buffer)
+          prompt = (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { prompt?: unknown }).prompt
+        } catch {
+          return respond(400, { error: 'Invalid JSON body' })
+        }
+        if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 4000) {
+          return respond(400, { error: 'Data request must be 1-4000 characters.' })
+        }
+        try {
+          respond(200, { data: await fetchWidgetData(prompt.trim(), apiKey) })
+        } catch (err) {
+          respond(502, { error: err instanceof Error ? err.message : 'Data lookup failed' })
+        }
+      })
+      server.middlewares.use('/api/proxy', async (req, res) => {
+        const target = new URL(req.url ?? '', 'http://internal').searchParams.get('url') ?? ''
+        const { status, body } = await proxyJSON(target)
+        res.statusCode = status
+        res.setHeader('content-type', 'application/json')
+        res.end(body)
+      })
+    },
+  }
+}
+
+// The project's .env is authoritative for the OpenAI key in dev. loadEnv
+// lets inherited shell variables win, and a stale OPENAI_API_KEY lingering
+// in a terminal app's environment snapshot silently shadows the real key
+// in .env (terminals only re-read the Windows environment when the app
+// itself relaunches) — so read the file first and fall back to the shell.
+function envFileValue(name: string): string | undefined {
+  try {
+    const text = readFileSync(new URL('./.env', import.meta.url), 'utf8')
+    const m = text.match(new RegExp(`^\\s*${name}\\s*=\\s*(.*)\\s*$`, 'm'))
+    const value = m?.[1].trim().replace(/^(["'])(.*)\1$/, '$2')
+    return value || undefined
+  } catch {
+    return undefined
+  }
+}
+
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), unfurlPlugin()],
-  server: {
-    // Honor a PORT assigned by the environment (e.g. preview tooling).
-    port: process.env.PORT ? Number(process.env.PORT) : undefined,
-    proxy: {
-      // Bandsintown's REST API doesn't send CORS headers, so proxy it.
-      '/api/bandsintown': {
-        target: 'https://rest.bandsintown.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/bandsintown/, ''),
-      },
-      // Some ESPN endpoints (e.g. /teams) lack CORS headers, so proxy them all.
-      '/api/espn': {
-        target: 'https://site.api.espn.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/espn/, ''),
-      },
-      // Yahoo Finance has no CORS headers either.
-      '/api/yahoo': {
-        target: 'https://query1.finance.yahoo.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/yahoo/, ''),
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const openaiKey = envFileValue('OPENAI_API_KEY') ?? env.OPENAI_API_KEY
+  return {
+    plugins: [react(), unfurlPlugin(), generateWidgetPlugin(openaiKey), widgetDataPlugin(openaiKey)],
+    server: {
+      // Honor a PORT assigned by the environment (e.g. preview tooling).
+      port: process.env.PORT ? Number(process.env.PORT) : undefined,
+      proxy: {
+        // Bandsintown's REST API doesn't send CORS headers, so proxy it.
+        '/api/bandsintown': {
+          target: 'https://rest.bandsintown.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/bandsintown/, ''),
+        },
+        // Some ESPN endpoints (e.g. /teams) lack CORS headers, so proxy them all.
+        '/api/espn': {
+          target: 'https://site.api.espn.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/espn/, ''),
+        },
+        // Yahoo Finance has no CORS headers either.
+        '/api/yahoo': {
+          target: 'https://query1.finance.yahoo.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/yahoo/, ''),
+        },
       },
     },
-  },
+  }
 })

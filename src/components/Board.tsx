@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import type { CardId } from "../lib/board";
-import { reorderBoard } from "../lib/board";
+import type { BoardId, CardId } from "../lib/board";
+import { isCustomId, reorderBoard } from "../lib/board";
 import { useSettings } from "../lib/settings";
+import { useCustomWidgets } from "../lib/customWidgets";
+import { CustomWidgetCard } from "./CustomWidget";
 import { Weather } from "./Weather";
 import { News } from "./News";
 import { Todos } from "./Todos";
@@ -49,10 +51,21 @@ const SCROLL_SPEED = 16;
  */
 export function Board() {
   const { settings, update } = useSettings();
+  const { widgets } = useCustomWidgets();
   const columns = settings.board;
-  const [dragId, setDragId] = useState<CardId | null>(null);
+  const [dragId, setDragId] = useState<BoardId | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
-  const [pendingFocus, setPendingFocus] = useState<CardId | null>(null);
+  const [pendingFocus, setPendingFocus] = useState<BoardId | null>(null);
+
+  // Generated widgets render through CustomWidgetCard; built-ins come from
+  // the static CARDS registry. Titles feed the drag ghost and aria labels.
+  const widgetById = new Map(widgets.map((w) => [w.id, w]));
+  const titleOf = (id: BoardId) => (isCustomId(id) ? (widgetById.get(id)?.title ?? "Widget") : TITLES[id]);
+  const cardOf = (id: BoardId) => {
+    if (!isCustomId(id)) return CARDS[id];
+    const widget = widgetById.get(id);
+    return widget ? <CustomWidgetCard widget={widget} /> : null;
+  };
   const ghostRef = useRef<HTMLDivElement>(null);
   const startPos = useRef({ x: 0, y: 0 });
 
@@ -64,9 +77,9 @@ export function Board() {
     setPendingFocus(null);
   }, [pendingFocus]);
 
-  const commit = (id: CardId, target: DropTarget) => update({ board: reorderBoard(columns, id, target) });
+  const commit = (id: BoardId, target: DropTarget) => update({ board: reorderBoard(columns, id, target) });
 
-  const startDrag = (id: CardId) => (e: ReactPointerEvent<HTMLButtonElement>) => {
+  const startDrag = (id: BoardId) => (e: ReactPointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
     startPos.current = { x: e.clientX, y: e.clientY };
     setDragId(id);
@@ -116,7 +129,7 @@ export function Board() {
     window.addEventListener("pointerup", onUp);
   };
 
-  const move = (id: CardId, dir: "up" | "down" | "left" | "right") => {
+  const move = (id: BoardId, dir: "up" | "down" | "left" | "right") => {
     let col = -1;
     let index = -1;
     columns.forEach((c, ci) => {
@@ -160,30 +173,32 @@ export function Board() {
                 {dropTarget?.col === c && dropTarget.index === i && dragId !== id && (
                   <div className="board__drop-line" />
                 )}
-                <button
-                  className="board__handle"
-                  aria-label={`Reposition ${TITLES[id]}. Drag, or use arrow keys.`}
-                  onPointerDown={startDrag(id)}
-                  onKeyDown={(e) => {
-                    const dir =
-                      e.key === "ArrowUp"
-                        ? "up"
-                        : e.key === "ArrowDown"
-                          ? "down"
-                          : e.key === "ArrowLeft"
-                            ? "left"
-                            : e.key === "ArrowRight"
-                              ? "right"
-                              : null;
-                    if (dir) {
-                      e.preventDefault();
-                      move(id, dir);
-                    }
-                  }}
-                >
-                  <GripIcon />
-                </button>
-                {CARDS[id]}
+                {!settings.locked && (
+                  <button
+                    className="board__handle"
+                    aria-label={`Reposition ${titleOf(id)}. Drag, or use arrow keys.`}
+                    onPointerDown={startDrag(id)}
+                    onKeyDown={(e) => {
+                      const dir =
+                        e.key === "ArrowUp"
+                          ? "up"
+                          : e.key === "ArrowDown"
+                            ? "down"
+                            : e.key === "ArrowLeft"
+                              ? "left"
+                              : e.key === "ArrowRight"
+                                ? "right"
+                                : null;
+                      if (dir) {
+                        e.preventDefault();
+                        move(id, dir);
+                      }
+                    }}
+                  >
+                    <GripIcon />
+                  </button>
+                )}
+                {cardOf(id)}
               </div>
             ))}
             {dropTarget?.col === c && dropTarget.index === col.length && (
@@ -198,7 +213,7 @@ export function Board() {
           ref={ghostRef}
           style={{ left: startPos.current.x, top: startPos.current.y }}
         >
-          {TITLES[dragId]}
+          {titleOf(dragId)}
         </div>
       )}
     </>

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useSettings } from "./lib/settings";
-import { MoonIcon, SunIcon } from "./components/icons";
 import { Board } from "./components/Board";
 import { FlowPage } from "./components/FlowPage";
+import { Fab } from "./components/Fab";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -48,28 +48,8 @@ function EditableName() {
   );
 }
 
-// Sun/moon toggle. First click overrides the system preference; after that it
-// flips between explicit light and dark.
-function ThemeToggle() {
-  const { settings, update } = useSettings();
-  const dark =
-    settings.theme === "dark" ||
-    (settings.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-  return (
-    <button
-      className="masthead__theme"
-      aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-      title={dark ? "Switch to light mode" : "Switch to dark mode"}
-      onClick={() => update({ theme: dark ? "light" : "dark" })}
-    >
-      {dark ? <SunIcon /> : <MoonIcon />}
-    </button>
-  );
-}
-
 export default function App() {
-  const { settings, update } = useSettings();
+  const { settings } = useSettings();
   const flow = settings.layout === "flow";
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -92,17 +72,6 @@ export default function App() {
       <header>
         <div className="masthead">
           <span className="masthead__date">{today}</span>
-          <div className="masthead__controls">
-            <div className="tabs" role="tablist" aria-label="Layout">
-              <button role="tab" aria-selected={!flow} onClick={() => update({ layout: "grid" })}>
-                Dashboard
-              </button>
-              <button role="tab" aria-selected={flow} onClick={() => update({ layout: "flow" })}>
-                Flow
-              </button>
-            </div>
-            <ThemeToggle />
-          </div>
         </div>
         <h1 className="masthead__greeting">
           {greeting()}, <EditableName />
@@ -115,6 +84,8 @@ export default function App() {
         Weather by Open-Meteo · News via Hacker News &amp; ESPN · Concerts via Bandsintown ·
         Quotes via Yahoo Finance
       </footer>
+
+      <Fab />
     </div>
   );
 }

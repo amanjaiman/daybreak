@@ -76,6 +76,49 @@ export const MoonIcon = () => (
   </svg>
 );
 
+export const RefreshIcon = () => (
+  <svg {...base}>
+    <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+    <path d="M20 3v4h-4" />
+  </svg>
+);
+
+export const SparkleIcon = () => (
+  <svg {...base}>
+    <path d="M12 4c.6 3.8 2.2 5.4 6 6-3.8.6-5.4 2.2-6 6-.6-3.8-2.2-5.4-6-6 3.8-.6 5.4-2.2 6-6Z" />
+    <path d="M19 15.5c.3 1.7 1 2.4 2.5 2.7-1.5.3-2.2 1-2.5 2.7-.3-1.7-1-2.4-2.5-2.7 1.5-.3 2.2-1 2.5-2.7ZM5.5 3.5c.25 1.4.85 2 2.25 2.25-1.4.25-2 .85-2.25 2.25-.25-1.4-.85-2-2.25-2.25 1.4-.25 2-.85 2.25-2.25Z" />
+  </svg>
+);
+
+export const LockIcon = () => (
+  <svg {...base}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+
+export const UnlockIcon = () => (
+  <svg {...base}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 7.5-2" />
+  </svg>
+);
+
+export const GridIcon = () => (
+  <svg {...base}>
+    <rect x="4" y="4" width="7" height="7" rx="1.5" />
+    <rect x="13" y="4" width="7" height="7" rx="1.5" />
+    <rect x="4" y="13" width="7" height="7" rx="1.5" />
+    <rect x="13" y="13" width="7" height="7" rx="1.5" />
+  </svg>
+);
+
+export const FlowIcon = () => (
+  <svg {...base}>
+    <path d="M5 6h14M5 10h14M5 14h9M5 18h6" />
+  </svg>
+);
+
 export const GripIcon = () => (
   <svg viewBox="0 0 16 8" fill="currentColor" aria-hidden="true">
     <circle cx="2" cy="2" r="1.3" />
