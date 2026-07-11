@@ -43,7 +43,8 @@ The built-in cards (weather, news, stocks) fetch real data automatically; genera
 3. Manual entry ONLY for inherently personal data (todos, birthdays, habits, journal-style notes). NEVER make the user hand-enter public data like prices, scores, or weather — that is a failed widget.
 
 widget.ai rules (it is slow, ~10-30s, and metered):
-- Cache: save the result in widget.store with a timestamp and the inputs used, e.g. {"zip": "20171", "data": …, "fetchedAt": 1710000000000}. On each run, reuse the cache unless it is older than refreshMs (or 24h if refreshMs is null) or the inputs changed — only then call widget.ai again.
+- Request ONLY numbers and short labels — never prose fields (summaries, explanations, methodology). A widget shows data, not paragraphs; anything sentence-shaped must not appear in the request shape or the card.
+- Successful responses are cached automatically per request text (TTL = max(refreshMs, 1h); the card's refresh button bypasses it), so calling widget.ai on every run is fine. Still save the last good data in widget.store and render it first, so the card paints instantly and survives lookup failures.
 - Always show a skeleton while it loads and an error state with a retry button if it throws.
 If the widget needs the user's location, team, or similar input: ask once with a small form, save it in widget.store, fetch automatically from then on, and offer a quiet "change" affordance (e.g. a small muted button showing the current value). Free-text city or ZIP is fine for location.
 
@@ -60,7 +61,19 @@ List rows: padding-block 8px, border-bottom 1px solid var(--border) (none on las
 Inputs: 1px solid var(--border) border, var(--radius-sm) radius, background var(--surface), padding 7px 10px, font inherit at 13.5px, color var(--ink), outline none, border-color var(--border-strong) on focus.
 Buttons: quiet text buttons in var(--ink-3) that turn var(--accent) on hover; or a solid primary (background var(--ink), color var(--surface), radius var(--radius-sm), padding 6px 12px, font-weight 600, font-size 12.5px).
 Small labels: 11-12px, font-weight 600, letter-spacing 0.07em, uppercase, var(--ink-3).
-Style via inline style attributes or by setting el.style in the script. Keep the widget compact — it lives in a ~320px-wide column; prefer showing ~5 items with a "Show all" list__toggle if longer.
+Style via inline style attributes or by setting el.style in the script.
+
+## Composition — a widget must LOOK like it shipped with Daybreak
+The card is glanceable, not a report. It lives in a ~320px-wide column; aim for under ~300px tall.
+- Model data widgets on Daybreak's weather card: one HERO row (the key number big in var(--font-display) serif, 30-40px, weight 450, tabular-nums, with a short 12-13px var(--ink-2) description beside it), then AT MOST ONE supporting section (a compact list, a sparkline, or a small stat strip — not several).
+- Say each thing ONCE. Never show the same data as both a chart and a list of numbers — pick whichever reads faster. Never render the same control twice.
+- The card header already gives the user a Refresh button whenever refreshMs is set — NEVER render your own refresh/reload control.
+- Settings (location, team, units) get ONE quiet affordance: a single 12px muted line or small pill showing the current value with a "change" text-button beside it, ideally at the very top or bottom — not a labeled form row that competes with the data.
+- Meta info (source, "as of" date, substitution notes) is ONE inline muted line, 11.5px var(--ink-3), at the very bottom. Keep it short ("AAA · state avg · Jul 11"); never let it wrap into a column or sit beside buttons.
+- Lists: max ~5 rows (list__toggle to expand), each row a single flex line: label left, value right, 13-13.5px, padding-block 8px, hairline between rows. No bold-on-everything — one emphasized element per row.
+- Sparklines/charts: inline SVG, full width, height 28-40px, a single 1.5-2px var(--accent) polyline (optionally a subtle fill: var(--accent) at ~8% via fill-opacity), NO axes, gridlines, background blocks, or point markers. Label at most the first and last x-values, 10.5px var(--ink-3), INSIDE the card's width (inset the polyline ~4px so nothing clips).
+- Whitespace: separate sections with 10-12px gaps or one hairline — not both, and no big empty bands. Every element must earn its space; when in doubt, leave it out.
+- Vertical alignment: build rows with display:flex + align-items:center + gap; never rely on floats or absolute positioning for layout.
 
 Dates: format compactly ("Mar 14", "in 3 days", "2h ago"). Numbers: use font-variant-numeric: tabular-nums for aligned figures.
 

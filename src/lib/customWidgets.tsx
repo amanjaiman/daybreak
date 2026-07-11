@@ -78,6 +78,7 @@ export function CustomWidgetsProvider({ children }: { children: ReactNode }) {
     setWidgets((all) => all.filter((w) => w.id !== id));
     update({ board: settings.board.map((col) => col.filter((c) => c !== id)) });
     localStorage.removeItem(dataKey(id));
+    localStorage.removeItem(`${dataKey(id)}.ai`); // widget.ai response cache
   };
 
   return <Ctx.Provider value={{ widgets, add, remove }}>{children}</Ctx.Provider>;
