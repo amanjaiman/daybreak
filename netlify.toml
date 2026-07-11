@@ -37,3 +37,17 @@
   to = "/.netlify/functions/generate-widget"
   status = 200
   force = true
+
+# Generated-widget runtime data: widget.ai() lookups (OpenAI + web search)
+# and the JSON CORS-fallback proxy for widget.getJSON().
+[[redirects]]
+  from = "/api/widget-data"
+  to = "/.netlify/functions/widget-data"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/proxy"
+  to = "/.netlify/functions/proxy"
+  status = 200
+  force = true

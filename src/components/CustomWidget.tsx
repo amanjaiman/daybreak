@@ -14,6 +14,7 @@ type WidgetApi = {
   root: HTMLElement;
   store: { get<T>(): T | null; set(value: unknown): void };
   getJSON: (url: string) => Promise<unknown>;
+  ai: (request: string) => Promise<unknown>;
   esc: (s: unknown) => string;
   refresh: () => void;
 };
@@ -33,9 +34,32 @@ function makeApi(widget: CustomWidget, root: HTMLElement, refresh: () => void): 
       set: (value) => localStorage.setItem(key, JSON.stringify(value)),
     },
     getJSON: async (url: string) => {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      return res.json();
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return await res.json();
+      } catch (err) {
+        // fetch() rejects with TypeError on CORS/network failure — retry
+        // those (and only those) through the server-side JSON proxy.
+        if (!(err instanceof TypeError)) throw err;
+        const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+        return body;
+      }
+    },
+    // Real-world data with no public API: answered server-side by OpenAI
+    // with live web search (netlify/functions/widget-data.ts). Slow and
+    // metered — generated scripts are instructed to cache results in store.
+    ai: async (request: string) => {
+      const res = await fetch("/api/widget-data", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: request }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { data?: unknown; error?: string };
+      if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+      return body.data;
     },
     esc: (s) =>
       String(s)

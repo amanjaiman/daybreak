@@ -36,7 +36,13 @@ env to enable Generate Widget.
 - `/api/generate-widget` is a serverless function at
   [`netlify/functions/generate-widget.ts`](netlify/functions/generate-widget.ts)
   that asks the OpenAI API to design a widget matching Daybreak's look; the
-  result is stored (and runs) entirely in your browser's localStorage.
+  result is stored (and runs) in your browser's localStorage.
+- Generated widgets get two data lifelines at runtime:
+  [`netlify/functions/widget-data.ts`](netlify/functions/widget-data.ts)
+  answers `widget.ai(...)` lookups via OpenAI with live web search (for
+  real-world data with no free API — local gas prices, rankings, …), and
+  [`netlify/functions/proxy.ts`](netlify/functions/proxy.ts) is the JSON
+  CORS fallback behind `widget.getJSON(...)`.
 - `/api/unfurl` is instead a real serverless function at
   [`netlify/functions/unfurl.ts`](netlify/functions/unfurl.ts), doing the
   same server-side fetch-and-parse as the dev middleware. It's intentionally
