@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -187,11 +188,28 @@ function widgetDataPlugin(apiKey: string | undefined): Plugin {
   }
 }
 
+// The project's .env is authoritative for the OpenAI key in dev. loadEnv
+// lets inherited shell variables win, and a stale OPENAI_API_KEY lingering
+// in a terminal app's environment snapshot silently shadows the real key
+// in .env (terminals only re-read the Windows environment when the app
+// itself relaunches) — so read the file first and fall back to the shell.
+function envFileValue(name: string): string | undefined {
+  try {
+    const text = readFileSync(new URL('./.env', import.meta.url), 'utf8')
+    const m = text.match(new RegExp(`^\\s*${name}\\s*=\\s*(.*)\\s*$`, 'm'))
+    const value = m?.[1].trim().replace(/^(["'])(.*)\1$/, '$2')
+    return value || undefined
+  } catch {
+    return undefined
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const openaiKey = envFileValue('OPENAI_API_KEY') ?? env.OPENAI_API_KEY
   return {
-    plugins: [react(), unfurlPlugin(), generateWidgetPlugin(env.OPENAI_API_KEY), widgetDataPlugin(env.OPENAI_API_KEY)],
+    plugins: [react(), unfurlPlugin(), generateWidgetPlugin(openaiKey), widgetDataPlugin(openaiKey)],
     server: {
       // Honor a PORT assigned by the environment (e.g. preview tooling).
       port: process.env.PORT ? Number(process.env.PORT) : undefined,
