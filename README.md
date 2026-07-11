@@ -69,11 +69,12 @@ Everything is editable in the app itself — no file editing needed:
   "anywhere".
 - **Football** — **Edit** shows a checklist of competitions.
 - **Stocks** — **Edit** to add/remove tickers.
-- **Anything else** — hover the Daybreak bubble (bottom right) and pick
-  **Generate widget**: describe what you want ("track my friends' birthdays")
-  and an AI-built widget matching Daybreak's design is added to your board.
-  The bubble menu is also where you switch between the Dashboard and Flow
-  layouts and toggle light/dark mode.
+- **Anything else** — click the Daybreak bubble (bottom right) to
+  **generate a widget**: describe what you want ("track my friends'
+  birthdays") and an AI-built widget matching Daybreak's design is added to
+  your board. Hovering the bubble fans out the rest: lock the view (hides
+  reposition handles and edit/remove controls), switch between the Dashboard
+  and Flow layouts, and toggle light/dark mode.
 
 All choices persist in localStorage. [`src/config.ts`](src/config.ts) only
 provides the defaults used on first run.

@@ -1232,6 +1232,7 @@ button {
 }
 
 .fab__logo {
+  position: relative;
   width: 52px;
   height: 52px;
   border-radius: 50%;
@@ -1293,16 +1294,11 @@ button {
   border-color: var(--border-strong);
 }
 
-/* Generate Widget is the headline action — the one accent-filled bubble. */
-.fab__action--primary {
-  background: var(--accent);
-  border-color: transparent;
-  color: var(--surface);
-}
-
-.fab__action--primary:hover {
-  color: var(--surface);
-  transform: scale(1.08);
+/* A toggled-on state (e.g. the view lock) reads as a quiet accent tint. */
+.fab__action.is-active {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  color: var(--accent);
 }
 
 .fab.is-open .fab__action {
@@ -1336,6 +1332,20 @@ button {
 
 .fab.is-open .fab__label {
   opacity: 1;
+}
+
+/* The main bubble IS the Generate Widget action; its label carries the
+   sparkle so the affordance reads at a glance while the menu is open. */
+.fab__label--logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fab__label--logo svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
 }
 
 @media (max-width: 980px) {

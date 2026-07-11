@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useSettings } from "../lib/settings";
 
 export function Card({
   title,
@@ -27,7 +28,11 @@ export function Card({
 
 // Edit/Done toggle for a card header. Hidden until the header is hovered
 // (or the button is focused), except while editing — "Done" must stay visible.
+// A locked view (see the bubble menu) suppresses it entirely, though a card
+// already in edit mode keeps its "Done" so it can't get stuck editing.
 export function EditButton({ editing, onToggle }: { editing: boolean; onToggle: () => void }) {
+  const { settings } = useSettings();
+  if (settings.locked && !editing) return null;
   return (
     <button
       className={`card__more card__more--reveal${editing ? " is-editing" : ""}`}

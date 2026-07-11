@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { useSettings } from "../lib/settings";
 import { useCustomWidgets } from "../lib/customWidgets";
 import type { GeneratedWidget } from "../lib/customWidgets";
-import { FlowIcon, GridIcon, MoonIcon, SparkleIcon, SunIcon } from "./icons";
+import { FlowIcon, GridIcon, LockIcon, MoonIcon, SparkleIcon, SunIcon, UnlockIcon } from "./icons";
 
 // The favicon's dawn mark, drawn with theme tokens so the bubble follows
 // light/dark mode: dark disc with light strokes in light mode, and the
@@ -92,9 +92,9 @@ function GenerateDialog({ onClose }: { onClose: () => void }) {
 }
 
 /**
- * The floating Daybreak bubble (bottom right). Hovering — or tapping, on
- * touch — fans out the action bubbles: Generate Widget, the dash/flow layout
- * switch, and the light/dark theme toggle.
+ * The floating Daybreak bubble (bottom right). The bubble itself is the
+ * Generate Widget action; hovering it fans out the secondary bubbles —
+ * view lock, the dash/flow layout switch, and the light/dark theme toggle.
  */
 export function Fab() {
   const { settings, update } = useSettings();
@@ -159,23 +159,26 @@ export function Fab() {
             {flow ? <GridIcon /> : <FlowIcon />}
           </button>
           <button
-            className="fab__action fab__action--primary"
+            className={`fab__action${settings.locked ? " is-active" : ""}`}
             tabIndex={open ? 0 : -1}
-            onClick={() => {
-              setDialog(true);
-              setOpen(false);
-            }}
+            onClick={() => update({ locked: !settings.locked })}
           >
-            <span className="fab__label">Generate widget</span>
-            <SparkleIcon />
+            <span className="fab__label">{settings.locked ? "Unlock view" : "Lock view"}</span>
+            {settings.locked ? <UnlockIcon /> : <LockIcon />}
           </button>
         </div>
         <button
           className="fab__logo"
-          aria-label="Daybreak actions"
-          aria-expanded={open && !dialog}
-          onClick={() => setOpen((v) => !v)}
+          aria-label="Generate widget"
+          title="Generate widget"
+          onClick={() => {
+            setDialog(true);
+            setOpen(false);
+          }}
         >
+          <span className="fab__label fab__label--logo">
+            <SparkleIcon /> Generate widget
+          </span>
           <Logo />
         </button>
       </div>

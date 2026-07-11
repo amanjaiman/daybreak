@@ -14,6 +14,8 @@ export type Settings = {
   name: string;
   layout: Layout;
   theme: Theme;
+  /** Locked view: hides reposition handles, card Edit buttons, and widget Remove. */
+  locked: boolean;
   board: BoardId[][];
   location: { label: string; latitude: number; longitude: number };
   topics: Topic[];
@@ -29,6 +31,7 @@ const defaults: Settings = {
   name: config.name,
   layout: "grid",
   theme: "system",
+  locked: false,
   board: DEFAULT_BOARD,
   location: config.location,
   topics: config.topics,

@@ -173,29 +173,31 @@ export function Board() {
                 {dropTarget?.col === c && dropTarget.index === i && dragId !== id && (
                   <div className="board__drop-line" />
                 )}
-                <button
-                  className="board__handle"
-                  aria-label={`Reposition ${titleOf(id)}. Drag, or use arrow keys.`}
-                  onPointerDown={startDrag(id)}
-                  onKeyDown={(e) => {
-                    const dir =
-                      e.key === "ArrowUp"
-                        ? "up"
-                        : e.key === "ArrowDown"
-                          ? "down"
-                          : e.key === "ArrowLeft"
-                            ? "left"
-                            : e.key === "ArrowRight"
-                              ? "right"
-                              : null;
-                    if (dir) {
-                      e.preventDefault();
-                      move(id, dir);
-                    }
-                  }}
-                >
-                  <GripIcon />
-                </button>
+                {!settings.locked && (
+                  <button
+                    className="board__handle"
+                    aria-label={`Reposition ${titleOf(id)}. Drag, or use arrow keys.`}
+                    onPointerDown={startDrag(id)}
+                    onKeyDown={(e) => {
+                      const dir =
+                        e.key === "ArrowUp"
+                          ? "up"
+                          : e.key === "ArrowDown"
+                            ? "down"
+                            : e.key === "ArrowLeft"
+                              ? "left"
+                              : e.key === "ArrowRight"
+                                ? "right"
+                                : null;
+                      if (dir) {
+                        e.preventDefault();
+                        move(id, dir);
+                      }
+                    }}
+                  >
+                    <GripIcon />
+                  </button>
+                )}
                 {cardOf(id)}
               </div>
             ))}

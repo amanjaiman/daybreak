@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Card } from "./Card";
 import { dataKey, useCustomWidgets } from "../lib/customWidgets";
 import type { CustomWidget } from "../lib/customWidgets";
+import { useSettings } from "../lib/settings";
 import { RefreshIcon } from "./icons";
 
 /**
@@ -141,6 +142,7 @@ function makeApi(
  */
 export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
   const { remove } = useCustomWidgets();
+  const { settings } = useSettings();
   const rootRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [runKey, setRunKey] = useState(0);
@@ -187,16 +189,18 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
               <RefreshIcon />
             </button>
           )}
-          <button
-            className="card__more card__more--reveal"
-            onClick={() => {
-              if (window.confirm(`Remove the "${widget.title}" widget? Its saved data is deleted too.`)) {
-                remove(widget.id);
-              }
-            }}
-          >
-            Remove
-          </button>
+          {!settings.locked && (
+            <button
+              className="card__more card__more--reveal"
+              onClick={() => {
+                if (window.confirm(`Remove the "${widget.title}" widget? Its saved data is deleted too.`)) {
+                  remove(widget.id);
+                }
+              }}
+            >
+              Remove
+            </button>
+          )}
         </span>
       }
     >

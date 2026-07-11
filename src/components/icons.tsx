@@ -90,6 +90,20 @@ export const SparkleIcon = () => (
   </svg>
 );
 
+export const LockIcon = () => (
+  <svg {...base}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+
+export const UnlockIcon = () => (
+  <svg {...base}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 7.5-2" />
+  </svg>
+);
+
 export const GridIcon = () => (
   <svg {...base}>
     <rect x="4" y="4" width="7" height="7" rx="1.5" />
