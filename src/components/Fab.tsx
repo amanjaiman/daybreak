@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useSettings } from "../lib/settings";
 import { useCustomWidgets } from "../lib/customWidgets";
-import type { GeneratedWidget } from "../lib/customWidgets";
+import { startGeneration } from "../lib/generateJob";
 import { FlowIcon, GridIcon, LockIcon, MoonIcon, SparkleIcon, SunIcon, UnlockIcon } from "./icons";
 
 // The favicon's dawn mark, drawn with theme tokens so the bubble follows
@@ -17,23 +17,15 @@ function Logo() {
   );
 }
 
-async function requestWidget(prompt: string): Promise<GeneratedWidget> {
-  const res = await fetch("/api/generate-widget", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prompt }),
-  });
-  const data = (await res.json().catch(() => ({}))) as Partial<GeneratedWidget> & { error?: string };
-  if (!res.ok) throw new Error(data.error ?? `${res.status} ${res.statusText}`);
-  return data as GeneratedWidget;
-}
-
 function GenerateDialog({ onClose }: { onClose: () => void }) {
-  const { add } = useCustomWidgets();
+  const { addPending } = useCustomWidgets();
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Kicking off the job returns fast (~1s); the widget then builds in the
+  // background and shows as a placeholder card on the board. So we only wait
+  // for the job to start, then close — no long modal spinner.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const trimmed = prompt.trim();
@@ -41,8 +33,8 @@ function GenerateDialog({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const spec = await requestWidget(trimmed);
-      add({ ...spec, prompt: trimmed });
+      const jobId = await startGeneration(trimmed);
+      addPending(jobId, trimmed);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -82,10 +74,10 @@ function GenerateDialog({ onClose }: { onClose: () => void }) {
             Cancel
           </button>
           <button type="submit" className="genie__go" disabled={busy || !prompt.trim()}>
-            {busy ? "Designing your widget…" : "Generate"}
+            {busy ? "Starting…" : "Generate"}
           </button>
         </div>
-        {busy && <p className="genie__wait">This usually takes 15–45 seconds.</p>}
+        {busy && <p className="genie__wait">Adding a placeholder to your board — it'll fill in shortly.</p>}
       </form>
     </div>
   );

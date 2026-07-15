@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { generateWidget } from './netlify/functions/generate-widget.ts'
-import { fetchWidgetData } from './netlify/functions/widget-data.ts'
+import { generateWidget } from './supabase/functions/_shared/generate.ts'
+import { fetchWidgetData } from './supabase/functions/_shared/widget-data.ts'
 import { proxyJSON } from './netlify/functions/proxy.ts'
 
 function isBlockedHost(hostname: string): boolean {
@@ -105,10 +105,16 @@ function unfurlPlugin(): Plugin {
   }
 }
 
-// Dev-server twin of netlify/functions/generate-widget.ts — same
-// generateWidget() core, so the prompt and validation aren't duplicated.
-// The key comes from .env (gitignored) or the shell environment.
-function generateWidgetPlugin(apiKey: string | undefined): Plugin {
+// Dev-server twin of the Supabase generate-widget + widget-status edge
+// functions: same generateWidget() core (so the prompt/validation aren't
+// duplicated), same async job shape (POST returns a job id; the client polls
+// /api/widget-status), but backed by an in-memory job map instead of Postgres
+// — so local dev needs only OPENAI_API_KEY, no Supabase. The key comes from
+// .env (gitignored) or the shell environment.
+type DevJob = { status: 'pending' } | { status: 'done'; result: unknown } | { status: 'error'; error: string }
+
+function generateWidgetPlugin(apiKey: string | undefined, opts: { model?: string; effort?: string }): Plugin {
+  const jobs = new Map<string, DevJob>()
   return {
     name: 'daybreak-generate-widget',
     configureServer(server) {
@@ -135,20 +141,37 @@ function generateWidgetPlugin(apiKey: string | undefined): Plugin {
         if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 2000) {
           return respond(400, { error: 'Describe the widget in 1-2000 characters.' })
         }
-        try {
-          respond(200, await generateWidget(prompt.trim(), apiKey))
-        } catch (err) {
-          respond(502, { error: err instanceof Error ? err.message : 'Widget generation failed' })
+        const jobId = crypto.randomUUID()
+        jobs.set(jobId, { status: 'pending' })
+        // Run generation in the background; the client polls /api/widget-status.
+        generateWidget(prompt.trim(), apiKey, opts).then(
+          (widget) => jobs.set(jobId, { status: 'done', result: widget }),
+          (err) => jobs.set(jobId, { status: 'error', error: err instanceof Error ? err.message : 'Widget generation failed' }),
+        )
+        respond(202, { jobId })
+      })
+
+      server.middlewares.use('/api/widget-status', (req, res) => {
+        const respond = (status: number, body: unknown) => {
+          res.statusCode = status
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify(body))
         }
+        const id = new URL(req.url ?? '', 'http://internal').searchParams.get('id')
+        const job = id ? jobs.get(id) : undefined
+        if (!job) return respond(404, { error: 'Unknown job' })
+        if (job.status === 'done') return respond(200, { status: 'done', widget: job.result })
+        if (job.status === 'error') return respond(200, { status: 'error', error: job.error })
+        respond(200, { status: 'pending' })
       })
     },
   }
 }
 
-// Dev-server twins of netlify/functions/widget-data.ts and proxy.ts —
-// runtime data plumbing for generated widgets (widget.ai and the CORS
+// Dev-server twins of the widget-data Supabase edge function and the Netlify
+// proxy — runtime data plumbing for generated widgets (widget.ai and the CORS
 // fallback inside widget.getJSON).
-function widgetDataPlugin(apiKey: string | undefined): Plugin {
+function widgetDataPlugin(apiKey: string | undefined, opts: { model?: string; effort?: string }): Plugin {
   return {
     name: 'daybreak-widget-data',
     configureServer(server) {
@@ -172,7 +195,7 @@ function widgetDataPlugin(apiKey: string | undefined): Plugin {
           return respond(400, { error: 'Data request must be 1-4000 characters.' })
         }
         try {
-          respond(200, { data: await fetchWidgetData(prompt.trim(), apiKey) })
+          respond(200, { data: await fetchWidgetData(prompt.trim(), apiKey, opts) })
         } catch (err) {
           respond(502, { error: err instanceof Error ? err.message : 'Data lookup failed' })
         }
@@ -208,8 +231,13 @@ function envFileValue(name: string): string | undefined {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const openaiKey = envFileValue('OPENAI_API_KEY') ?? env.OPENAI_API_KEY
+  const genOpts = { model: env.OPENAI_MODEL || undefined, effort: env.OPENAI_REASONING_EFFORT || undefined }
+  const dataOpts = {
+    model: env.OPENAI_DATA_MODEL || env.OPENAI_MODEL || undefined,
+    effort: env.OPENAI_DATA_REASONING_EFFORT || undefined,
+  }
   return {
-    plugins: [react(), unfurlPlugin(), generateWidgetPlugin(openaiKey), widgetDataPlugin(openaiKey)],
+    plugins: [react(), unfurlPlugin(), generateWidgetPlugin(openaiKey, genOpts), widgetDataPlugin(openaiKey, dataOpts)],
     server: {
       // Honor a PORT assigned by the environment (e.g. preview tooling).
       port: process.env.PORT ? Number(process.env.PORT) : undefined,

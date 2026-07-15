@@ -1,19 +1,21 @@
-// Runtime data source for generated widgets: widget.ai(request) posts here,
-// and we ask the OpenAI Responses API — with live web search — to answer
-// with pure JSON. This is what lets a generated widget be "smart" about
+// Runtime data source for generated widgets: widget.ai(request) ultimately
+// calls this, and we ask the OpenAI Responses API — with live web search — to
+// answer with pure JSON. This is what lets a generated widget be "smart" about
 // real-world data that has no free public API (local gas prices, rankings,
-// schedules, …) instead of asking the user to type it in.
+// current headlines, …) instead of asking the user to type it in.
 //
-// Kept standalone (no imports outside this directory) so Netlify's function
-// bundler doesn't need to resolve paths beyond netlify/functions/. The Vite
-// dev server imports fetchWidgetData() from here for its /api/widget-data
-// middleware.
+// Dependency-free (only web-standard `fetch`) so it is imported verbatim by
+// BOTH the Supabase edge function (Deno, supabase/functions/widget-data) and
+// the Vite dev twin (Node, vite.config.ts). Model/effort come in as options so
+// each caller reads them from its own environment.
+
+export type WidgetDataOptions = { model?: string; effort?: string };
 
 const SYSTEM = `You are a data source for a personal-dashboard widget. The request describes real-world data to look up and the exact JSON shape to return. Use web search whenever the request involves current or local real-world data. Respond with ONLY the JSON value (no prose, no markdown fences) in exactly the requested shape; use numbers for numeric values.
 
 Always return the best available data — never refuse because the exact granularity, time span, or locality isn't published:
 - If the requested locality isn't covered, substitute the nearest published level (city -> metro -> state -> national). Say what you used in a "source" field if the shape has one (short, e.g. "AAA VA avg") — never by appending explanations to label fields.
-- Keep every string field short: labels are a place or series name (under ~25 chars), sources a name + optional qualifier (under ~20 chars). No sentences anywhere.
+- Keep every string field short: labels are a place or series name (under ~25 chars), sources a name + optional qualifier (under ~20 chars). Headlines may run under ~80 chars. No sentences anywhere else.
 - If the requested granularity doesn't exist (e.g. daily history when only current + weekly/monthly averages are published), fill the requested shape with reasonable values derived from what IS published (e.g. interpolate a daily series from current, week-ago, and month-ago figures). Widgets show trends at a glance; a faithful approximation clearly beats no data.
 - Reputable estimates are fine; pick the best figure and move on.
 Only respond with {"error": "<short reason>"} if you can find nothing relevant at all — this should be rare.`;
@@ -49,7 +51,11 @@ function parseLooseJSON(text: string): unknown {
   }
 }
 
-export async function fetchWidgetData(prompt: string, apiKey: string): Promise<unknown> {
+export async function fetchWidgetData(
+  prompt: string,
+  apiKey: string,
+  opts: WidgetDataOptions = {},
+): Promise<unknown> {
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -57,9 +63,10 @@ export async function fetchWidgetData(prompt: string, apiKey: string): Promise<u
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_DATA_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini",
-      // Low effort keeps lookups inside Netlify's ~26s synchronous limit.
-      reasoning: { effort: "low" },
+      model: opts.model || "gpt-5-mini",
+      // Low effort keeps lookups quick; on Supabase there's no synchronous
+      // timeout to squeeze under, but runtime lookups still want to feel snappy.
+      reasoning: { effort: opts.effort || "low" },
       tools: [{ type: "web_search" }],
       instructions: SYSTEM,
       input: prompt,
@@ -77,37 +84,3 @@ export async function fetchWidgetData(prompt: string, apiKey: string): Promise<u
   }
   return data;
 }
-
-type NetlifyEvent = {
-  httpMethod?: string;
-  body?: string | null;
-};
-
-const json = (statusCode: number, body: unknown) => ({
-  statusCode,
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify(body),
-});
-
-export const handler = async (event: NetlifyEvent) => {
-  if (event.httpMethod !== "POST") return json(405, { error: "POST only" });
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return json(503, { error: "Data lookups aren't configured (OPENAI_API_KEY is not set)." });
-
-  let prompt: unknown;
-  try {
-    prompt = (JSON.parse(event.body ?? "{}") as { prompt?: unknown }).prompt;
-  } catch {
-    return json(400, { error: "Invalid JSON body" });
-  }
-  if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 4000) {
-    return json(400, { error: "Data request must be 1-4000 characters." });
-  }
-
-  try {
-    return json(200, { data: await fetchWidgetData(prompt.trim(), apiKey) });
-  } catch (err) {
-    return json(502, { error: err instanceof Error ? err.message : "Data lookup failed" });
-  }
-};

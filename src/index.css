@@ -1625,6 +1625,19 @@ button {
   color: var(--live);
 }
 
+/* Placeholder shown while a generated widget is still being built. */
+.widget__pending {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.widget__pending-note {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
 /* ----------------------------------------------------------------- footer */
 
 .footer {

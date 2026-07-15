@@ -30,22 +30,16 @@
   status = 200
   force = true
 
-# "Generate Widget" (OpenAI) — see netlify/functions/generate-widget.ts.
-# Requires OPENAI_API_KEY (and optionally OPENAI_MODEL) in the site env.
-[[redirects]]
-  from = "/api/generate-widget"
-  to = "/.netlify/functions/generate-widget"
-  status = 200
-  force = true
+# Generated-widget AI backends now run on Supabase edge functions, called
+# directly by the frontend with the publishable key (no redirect here):
+#   - generate-widget / widget-status — the async "Generate Widget" job
+#   - widget-data — runtime widget.ai() lookups (gpt-5 + web search; needs more
+#     than Netlify's ~26s synchronous ceiling)
+# Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the site env. See
+# supabase/functions/.
 
-# Generated-widget runtime data: widget.ai() lookups (OpenAI + web search)
-# and the JSON CORS-fallback proxy for widget.getJSON().
-[[redirects]]
-  from = "/api/widget-data"
-  to = "/.netlify/functions/widget-data"
-  status = 200
-  force = true
-
+# The JSON CORS-fallback proxy for widget.getJSON() is a fast server-side fetch
+# with no timeout concern, so it stays a Netlify function.
 [[redirects]]
   from = "/api/proxy"
   to = "/.netlify/functions/proxy"

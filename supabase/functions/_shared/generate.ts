@@ -1,13 +1,14 @@
-// "Generate Widget": turns a one-line user request into a Daybreak widget by
-// asking the OpenAI API for a { title, emoji, html, script, refreshMs } spec,
-// which the client stores in localStorage and runs (see
-// src/components/CustomWidget.tsx — the WidgetApi there is the contract this
-// system prompt documents; keep the two in sync).
+// "Generate Widget" core: turns a one-line user request into a Daybreak widget
+// by asking the OpenAI Responses API — with LIVE WEB SEARCH — for a
+// { title, emoji, html, script, refreshMs } spec, which the client stores in
+// localStorage and runs (see src/components/CustomWidget.tsx — the WidgetApi
+// there is the contract this system prompt documents; keep the two in sync).
 //
-// Kept standalone (no imports outside this directory) so Netlify's function
-// bundler doesn't need to resolve paths beyond netlify/functions/. The Vite
-// dev server imports generateWidget() from here for its /api/generate-widget
-// middleware, so the prompt and validation live in exactly one place.
+// Deliberately dependency-free (only the web-standard `fetch`, no Deno/Node
+// APIs) so it is imported verbatim by BOTH the Supabase edge function
+// (Deno, supabase/functions/generate-widget) and the Vite dev twin
+// (Node, vite.config.ts). Model/effort come in as options so each caller
+// can read them from its own environment.
 
 export type GeneratedWidget = {
   title: string;
@@ -17,7 +18,9 @@ export type GeneratedWidget = {
   refreshMs: number | null;
 };
 
-const SYSTEM_PROMPT = `You build small dashboard widgets for "Daybreak", a calm personal homepage. Given the user's request, respond with a single JSON object:
+export type GenerateOptions = { model?: string; effort?: string };
+
+const SYSTEM_PROMPT = `You build small dashboard widgets for "Daybreak", a calm personal homepage. Given the user's request, respond with ONLY a single JSON object (no prose, no markdown fences):
 
 {
   "title": string,      // short card title, 1-3 words, e.g. "Birthdays"
@@ -26,6 +29,8 @@ const SYSTEM_PROMPT = `You build small dashboard widgets for "Daybreak", a calm 
   "script": string,     // JavaScript, executed as: new Function("widget", script)(api)
   "refreshMs": number | null  // polling interval if the widget fetches live data (>= 60000), else null
 }
+
+You have a web_search tool. USE IT before you finalize the spec whenever the widget touches real-world data: to confirm which data source to use, that an API endpoint actually exists and returns the fields you rely on, and what the current values look like. Never guess an endpoint from memory — a widget wired to a URL that 404s is a failed widget.
 
 ## The widget API
 Your script receives one argument named \`widget\`:
@@ -39,12 +44,12 @@ Your script receives one argument named \`widget\`:
 
 ## Getting data — make the widget as smart as the built-in ones
 The built-in cards (weather, news, stocks) fetch real data automatically; generated widgets must feel the same. Pick the FIRST workable option:
-1. \`widget.getJSON(url)\` for data with a free, keyless public JSON API (e.g. open-meteo.com weather + geocoding, frankfurter.dev FX, api.coingecko.com crypto, hacker-news.firebaseio.com). Don't invent endpoints — only use APIs you're confident exist.
-2. \`widget.ai(request)\` for real-world data with NO keyless API: local prices (gas, groceries, rent), rankings, schedules, release dates, statistics, recommendations. The request must state the data needed AND the exact JSON shape, e.g.: 'Average regular gasoline price near ZIP <stored zip>, now and roughly over the last 30 days. Respond ONLY with JSON: {"areaLabel": string (short place name), "currentUsd": number, "monthAvgUsd": number, "trend": "rising"|"falling"|"flat", "source": string (short, e.g. "AAA"), "asOf": "YYYY-MM-DD"}'. Always request a short "source" + date and show them in the footer meta. Request only data that realistically appears in public sources: current figures, recent averages, a trend direction, top-N lists. NEVER ask for day-by-day or hour-by-hour historical series — ask for summary stats (current, 30-day average, trend) instead; that is also all a small card can show.
-3. Manual entry ONLY for inherently personal data (todos, birthdays, habits, journal-style notes). NEVER make the user hand-enter public data like prices, scores, or weather — that is a failed widget.
+1. \`widget.getJSON(url)\` for data with a free, keyless public JSON API you have VERIFIED with web_search exists and is CORS-friendly or works through the proxy (e.g. open-meteo.com weather + geocoding, frankfurter.dev FX, api.coingecko.com crypto, hacker-news.firebaseio.com). Confirm the exact path and response shape before relying on it. Do NOT use Reddit, Twitter/X, Instagram, Facebook, or other social/consumer sites as JSON APIs — they block server-side requests and rate-limit by IP, so they fail even through the proxy.
+2. \`widget.ai(request)\` for real-world data with NO reliable keyless API. This is the RIGHT choice for: current news and headlines, top-N rankings, local prices (gas, groceries, rent), schedules, release dates, standings, statistics, and recommendations. News and "what's happening now" ALWAYS go here, never getJSON. The request must state the data needed AND the exact JSON shape, e.g.: 'Top 5 U.S. political news headlines right now. Respond ONLY with JSON: {"items": [{"headline": string (under 80 chars), "source": string (short outlet name)}], "asOf": "YYYY-MM-DD"}'. Always request a short "source" + date and show them. Request only data that realistically appears in public sources: current figures, recent averages, a trend direction, top-N lists. NEVER ask for day-by-day or hour-by-hour historical series — ask for summary stats (current, 30-day average, trend) instead; that is also all a small card can show.
+3. Manual entry ONLY for inherently personal data (todos, birthdays, habits, journal-style notes). NEVER make the user hand-enter public data like prices, scores, headlines, or weather — that is a failed widget.
 
 widget.ai rules (it is slow, ~10-30s, and metered):
-- Request ONLY numbers and short labels — never prose fields (summaries, explanations, methodology). A widget shows data, not paragraphs; anything sentence-shaped must not appear in the request shape or the card.
+- Request ONLY numbers and short labels — never prose fields (summaries, explanations, methodology). A widget shows data, not paragraphs; anything sentence-shaped must not appear in the request shape or the card. Headlines are the one allowed short-text exception; keep them under ~80 chars.
 - Successful responses are cached automatically per request text (TTL = max(refreshMs, 1h); the card's refresh button bypasses it), so calling widget.ai on every run is fine. Still save the last good data in widget.store and render it first, so the card paints instantly and survives lookup failures.
 - Always show a skeleton while it loads and an error state with a retry button if it throws.
 If the widget needs the user's location, team, or similar input: ask once with a small form, save it in widget.store, fetch automatically from then on, and offer a quiet "change" affordance (e.g. a small muted button showing the current value). Free-text city or ZIP is fine for location.
@@ -66,18 +71,19 @@ Blocks (copy the markup exactly, classes included):
   <div class="gw-row"><span class="l">Current</span><span class="v">$3.89</span></div>
   Wrap a value in <span class="gw-up">▲ 2.1%</span> / <span class="gw-down">▼ 0.8%</span> for green/red movement.
 - Sparkline — insert the return value of widget.sparkline([3.72, 3.75, …]) as-is; it is finished SVG markup. NEVER draw your own chart, and never add axis labels, tick marks, or captions to it.
-- List item (trackers, feeds) — the same gw-row: escaped content in .l, a value or a delete "×" button in .v. Cap at 5 rows with class="list__toggle" ("Show all N") to expand.
+- List item (trackers, feeds, headlines) — the same gw-row: escaped content in .l, a value or a delete "×" button in .v. Cap at 5 rows with class="list__toggle" ("Show all N") to expand.
 - Add form:
   <form class="gw-form"><input class="gw-input" placeholder="Name"><button class="gw-btn" type="submit">Add</button></form>
 - Footer — settings + meta in one line, ALWAYS the last element whenever the widget has a data source or a stored setting:
   <div class="gw-foot"><span class="gw-foot__meta">AAA · Jul 11</span><button class="gw-change" type="button">20871 · change</button></div>
-  The meta stays under ~40 characters and names the actual source ("AAA · Jul 11", "EIA regional avg · Jul 11") — never a literal placeholder like "source". The change button shows the stored setting; clicking it swaps the footer content for a gw-form to edit it.
+  The meta stays under ~40 characters and names the actual source ("AAA · Jul 11", "Reuters · Jul 11") — never a literal placeholder like "source". The change button shows the stored setting; clicking it swaps the footer content for a gw-form to edit it.
 - Empty state: <div class="empty">Nothing yet.</div> · Loading: <div class="skeleton" style="height:52px"></div> · Small tag: class="pill" or "pill--accent".
 
 All literal values in these examples ($3.82, Herndon, 20871, AAA…) are placeholders — never reuse them as defaults or output. If the widget needs a user setting (location, team, …) and widget.store has none yet, the FIRST render is a gw-form asking for it (with class="empty" line explaining why); never assume or invent a value.
 
 Standard shapes — pick the one that fits and follow it exactly:
 - Data widget (fetches anything): gw-hero, then ONE of (sparkline | 2-4 gw-rows | a 5-row list), then gw-foot. Nothing else.
+- Feed widget (news, headlines): a 5-row list of headlines, then gw-foot with the source + date. No hero.
 - Tracker widget (user-entered): gw-form, then the list, then gw-foot only if there is a setting.
 Everything appears once — one hero, one supporting block, one footer, and never a refresh control of your own (the card header has one).
 
@@ -86,26 +92,58 @@ Dates: format compactly ("Mar 14", "in 3 days", "2h ago"). Numbers: keep units s
 
 Respond with ONLY the JSON object.`;
 
-/** Ask OpenAI for a widget spec and validate its shape. */
-export async function generateWidget(prompt: string, apiKey: string): Promise<GeneratedWidget> {
-  const model = process.env.OPENAI_MODEL || "gpt-5-mini";
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+/** Extract the assistant's final text from a Responses API payload. */
+function outputText(data: { output?: { type?: string; content?: { type?: string; text?: string }[] }[] }): string {
+  const parts: string[] = [];
+  for (const item of data.output ?? []) {
+    if (item.type !== "message") continue;
+    for (const c of item.content ?? []) {
+      if (c.type === "output_text" && c.text) parts.push(c.text);
+    }
+  }
+  return parts.join("").trim();
+}
+
+/** Pull the first JSON object out of a text blob (tolerates stray prose/fences). */
+function parseLooseJSON(text: string): unknown {
+  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    if (start !== -1) {
+      const candidate = cleaned.slice(start, cleaned.lastIndexOf("}") + 1 || undefined);
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        /* fall through */
+      }
+    }
+    throw new Error("The model didn't return valid JSON");
+  }
+}
+
+/** Ask OpenAI (Responses API + web search) for a widget spec and validate its shape. */
+export async function generateWidget(
+  prompt: string,
+  apiKey: string,
+  opts: GenerateOptions = {},
+): Promise<GeneratedWidget> {
+  const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model,
-      // Default (medium) reasoning pushed generation past 60s — beyond
-      // Netlify's synchronous function timeout. Low keeps codegen quality
-      // while finishing well inside it.
-      reasoning_effort: process.env.OPENAI_REASONING_EFFORT || "low",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Build this widget: ${prompt}` },
-      ],
+      // Full gpt-5 with web search: the async job model (Supabase edge
+      // function / dev job map) absorbs the 30s-2min this can take, so we no
+      // longer trade reasoning down to fit a synchronous timeout.
+      model: opts.model || "gpt-5",
+      reasoning: { effort: opts.effort || "medium" },
+      tools: [{ type: "web_search" }],
+      instructions: SYSTEM_PROMPT,
+      input: `Build this widget: ${prompt}`,
     }),
   });
 
@@ -114,18 +152,10 @@ export async function generateWidget(prompt: string, apiKey: string): Promise<Ge
     throw new Error(`OpenAI request failed (${res.status}): ${detail.slice(0, 300)}`);
   }
 
-  const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  const content = data.choices?.[0]?.message?.content;
+  const content = outputText((await res.json()) as Parameters<typeof outputText>[0]);
   if (!content) throw new Error("OpenAI returned an empty response");
 
-  let spec: Partial<GeneratedWidget>;
-  try {
-    spec = JSON.parse(content) as Partial<GeneratedWidget>;
-  } catch {
-    throw new Error("OpenAI returned malformed JSON");
-  }
+  const spec = parseLooseJSON(content) as Partial<GeneratedWidget>;
   if (typeof spec.title !== "string" || !spec.title.trim()) throw new Error("Widget spec is missing a title");
   if (typeof spec.script !== "string" || !spec.script.trim()) throw new Error("Widget spec is missing a script");
 
@@ -140,37 +170,3 @@ export async function generateWidget(prompt: string, apiKey: string): Promise<Ge
         : null,
   };
 }
-
-type NetlifyEvent = {
-  httpMethod?: string;
-  body?: string | null;
-};
-
-const json = (statusCode: number, body: unknown) => ({
-  statusCode,
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify(body),
-});
-
-export const handler = async (event: NetlifyEvent) => {
-  if (event.httpMethod !== "POST") return json(405, { error: "POST only" });
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return json(503, { error: "Widget generation isn't configured (OPENAI_API_KEY is not set)." });
-
-  let prompt: unknown;
-  try {
-    prompt = (JSON.parse(event.body ?? "{}") as { prompt?: unknown }).prompt;
-  } catch {
-    return json(400, { error: "Invalid JSON body" });
-  }
-  if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 2000) {
-    return json(400, { error: "Describe the widget in 1-2000 characters." });
-  }
-
-  try {
-    return json(200, await generateWidget(prompt.trim(), apiKey));
-  } catch (err) {
-    return json(502, { error: err instanceof Error ? err.message : "Widget generation failed" });
-  }
-};
