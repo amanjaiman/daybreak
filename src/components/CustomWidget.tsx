@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Card } from "./Card";
 import { dataKey, useCustomWidgets } from "../lib/customWidgets";
 import type { CustomWidget } from "../lib/customWidgets";
+import { fnHeaders, fnUrl } from "../lib/backend";
 import { useSettings } from "../lib/settings";
 import { RefreshIcon } from "./icons";
 
@@ -90,7 +91,7 @@ function makeApi(
       }
     },
     // Real-world data with no public API: answered server-side by OpenAI
-    // with live web search (netlify/functions/widget-data.ts). Slow and
+    // with live web search (the widget-data Supabase edge function). Slow and
     // metered, so successful responses are cached here per request text —
     // generated scripts don't have to get TTL logic right for reloads to
     // stay free. The card header's manual refresh bypasses the cache.
@@ -107,9 +108,9 @@ function makeApi(
       const hit = cache[h];
       if (!bypassAiCache && hit && Date.now() - hit.t < ttl) return hit.data;
 
-      const res = await fetch("/api/widget-data", {
+      const res = await fetch(fnUrl("widget-data"), {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: fnHeaders(),
         body: JSON.stringify({ prompt: request }),
       });
       const body = (await res.json().catch(() => ({}))) as { data?: unknown; error?: string };
@@ -141,7 +142,7 @@ function makeApi(
  * worth keeping goes through api.store.
  */
 export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
-  const { remove } = useCustomWidgets();
+  const { remove, retry } = useCustomWidgets();
   const { settings } = useSettings();
   const rootRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -153,7 +154,10 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
     setRunKey((k) => k + 1);
   };
 
+  const ready = widget.status === "ready";
+
   useEffect(() => {
+    if (!ready) return;
     const root = rootRef.current;
     if (!root) return;
     root.innerHTML = widget.html;
@@ -170,13 +174,64 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
       root.innerHTML = "";
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widget.id, widget.html, widget.script, runKey]);
+  }, [ready, widget.id, widget.html, widget.script, runKey]);
 
   useEffect(() => {
-    if (!widget.refreshMs) return;
+    if (!ready || !widget.refreshMs) return;
     const timer = setInterval(() => rerun(), Math.max(60_000, widget.refreshMs));
     return () => clearInterval(timer);
-  }, [widget.refreshMs]);
+  }, [ready, widget.refreshMs]);
+
+  const removeButton = !settings.locked && (
+    <button
+      className="card__more card__more--reveal"
+      onClick={() => {
+        const msg =
+          widget.status === "pending"
+            ? `Stop building the "${widget.title}" widget?`
+            : `Remove the "${widget.title}" widget? Its saved data is deleted too.`;
+        if (window.confirm(msg)) remove(widget.id);
+      }}
+    >
+      Remove
+    </button>
+  );
+
+  // Generation still running: a calm skeleton where the widget will land.
+  if (widget.status === "pending") {
+    return (
+      <Card
+        title={widget.title}
+        icon={<span className="widget__emoji">{widget.emoji}</span>}
+        actions={<span className="widget__actions">{removeButton}</span>}
+      >
+        <div className="widget__pending">
+          <div className="skeleton" style={{ height: 52 }} />
+          <div className="skeleton" style={{ height: 16, width: "70%" }} />
+          <div className="skeleton" style={{ height: 16, width: "45%" }} />
+          <p className="widget__pending-note">Building your widget…</p>
+        </div>
+      </Card>
+    );
+  }
+
+  // Generation failed outright: offer a retry of the same prompt.
+  if (widget.status === "error") {
+    return (
+      <Card
+        title="Couldn't build it"
+        icon={<span className="widget__emoji">⚠️</span>}
+        actions={<span className="widget__actions">{removeButton}</span>}
+      >
+        <div className="widget__error">
+          {widget.genError ?? "Widget generation failed."}
+          <button className="list__toggle" onClick={() => retry(widget.id)}>
+            Try again
+          </button>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card
@@ -189,18 +244,7 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
               <RefreshIcon />
             </button>
           )}
-          {!settings.locked && (
-            <button
-              className="card__more card__more--reveal"
-              onClick={() => {
-                if (window.confirm(`Remove the "${widget.title}" widget? Its saved data is deleted too.`)) {
-                  remove(widget.id);
-                }
-              }}
-            >
-              Remove
-            </button>
-          )}
+          {removeButton}
         </span>
       }
     >

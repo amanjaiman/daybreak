@@ -22,27 +22,54 @@ Open http://localhost:5173.
 
 To use **Generate Widget** (the sparkle in the floating bubble menu) locally,
 copy `.env.example` to `.env` and set `OPENAI_API_KEY` — it's the one feature
-that needs a key. Everything else works without it.
+that needs a key. Everything else works without it. In dev, generation runs
+in-process through the Vite middleware (an in-memory job map), so you don't
+need Supabase locally — only the OpenAI key.
 
 ## Deploying to Netlify
 
 `netlify.toml` is already set up — connect the repo and deploy as-is. The
 built-in cards need no environment variables (every data source above is
-keyless); set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) in the site
-env to enable Generate Widget.
+keyless). **Generate Widget** is the exception, and in production it runs as
+an async job on **Supabase** (a tool-using gpt-5 generation runs well past
+Netlify's ~26s synchronous function limit).
+
+Set up the Supabase backend once:
+
+```bash
+supabase link --project-ref <your-project-ref>
+supabase db push                       # creates the widget_jobs table
+supabase secrets set OPENAI_API_KEY=sk-...   # optionally OPENAI_MODEL / OPENAI_DATA_MODEL / *_REASONING_EFFORT
+supabase functions deploy generate-widget
+supabase functions deploy widget-status
+supabase functions deploy widget-data
+```
+
+Then set two variables in the Netlify site env (both public by design — the
+frontend calls the Supabase functions directly with them):
+
+- `VITE_SUPABASE_URL` — `https://<ref>.supabase.co`
+- `VITE_SUPABASE_ANON_KEY` — the project's publishable key
+
+How it fits together:
 
 - The Bandsintown/ESPN/Yahoo proxies become `[[redirects]]` rewrites in
   `netlify.toml`.
-- `/api/generate-widget` is a serverless function at
-  [`netlify/functions/generate-widget.ts`](netlify/functions/generate-widget.ts)
-  that asks the OpenAI API to design a widget matching Daybreak's look; the
-  result is stored (and runs) in your browser's localStorage.
-- Generated widgets get two data lifelines at runtime:
-  [`netlify/functions/widget-data.ts`](netlify/functions/widget-data.ts)
-  answers `widget.ai(...)` lookups via OpenAI with live web search (for
-  real-world data with no free API — local gas prices, rankings, …), and
-  [`netlify/functions/proxy.ts`](netlify/functions/proxy.ts) is the JSON
-  CORS fallback behind `widget.getJSON(...)`.
+- The widget AI backends are three Supabase edge functions in
+  [`supabase/functions/`](supabase/functions): `generate-widget` inserts a job
+  row and runs gpt-5 (with live web search) as a background task, returning a
+  job id immediately; `widget-status` is polled until the job is done (the
+  frontend shows a placeholder card meanwhile and stores the job id, so a
+  reload mid-generation resumes instead of losing the widget); and
+  `widget-data` answers runtime `widget.ai(...)` lookups (OpenAI + web search,
+  for real-world data with no free API — local gas prices, rankings, current
+  headlines, …). The finished widget spec is stored (and runs) in your
+  browser's localStorage. Cores in
+  [`supabase/functions/_shared/`](supabase/functions/_shared) are plain
+  `fetch`-only TS so the Vite dev middleware runs the same code in-process.
+- The one server helper still on Netlify is
+  [`netlify/functions/proxy.ts`](netlify/functions/proxy.ts) — the JSON CORS
+  fallback behind `widget.getJSON(...)` (a fast fetch with no timeout concern).
 - `/api/unfurl` is instead a real serverless function at
   [`netlify/functions/unfurl.ts`](netlify/functions/unfurl.ts), doing the
   same server-side fetch-and-parse as the dev middleware. It's intentionally

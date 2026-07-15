@@ -1,0 +1,15 @@
+# Minimal Supabase CLI config for Daybreak's Generate Widget backend.
+# `supabase link --project-ref <ref>` connects this to the hosted project.
+project_id = "personal-dashboard"
+
+# Both widget functions are meant to be public endpoints (the frontend calls
+# them directly with the publishable key). Their secrets — OPENAI_API_KEY and
+# the service role key — stay server-side, so no JWT verification is needed.
+[functions.generate-widget]
+verify_jwt = false
+
+[functions.widget-status]
+verify_jwt = false
+
+[functions.widget-data]
+verify_jwt = false
