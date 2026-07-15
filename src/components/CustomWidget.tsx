@@ -257,7 +257,7 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
           </button>
         </div>
       ) : null}
-      <div ref={rootRef} style={error ? { display: "none" } : undefined} />
+      <div className="gw-root" ref={rootRef} style={error ? { display: "none" } : undefined} />
     </Card>
   );
 }
