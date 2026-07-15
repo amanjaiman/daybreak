@@ -1,6 +1,6 @@
 // "Generate Widget" core: turns a one-line user request into a Daybreak widget
 // by asking the OpenAI Responses API — with LIVE WEB SEARCH — for a
-// { title, emoji, html, script, refreshMs } spec, which the client stores in
+// { title, icon, html, script, refreshMs } spec, which the client stores in
 // localStorage and runs (see src/components/CustomWidget.tsx — the WidgetApi
 // there is the contract this system prompt documents; keep the two in sync).
 //
@@ -12,7 +12,7 @@
 
 export type GeneratedWidget = {
   title: string;
-  emoji: string;
+  icon: string;
   html: string;
   script: string;
   refreshMs: number | null;
@@ -20,15 +20,30 @@ export type GeneratedWidget = {
 
 export type GenerateOptions = { model?: string; effort?: string };
 
+// The flat icon names a generated widget can wear, matching the built-in
+// cards. MUST stay in sync with the WIDGET_ICONS registry in
+// src/components/widgetIcons.tsx. "panel" is the neutral default.
+const ICON_NAMES = [
+  "news", "chart", "money", "calendar", "clock", "weather", "moon", "ball",
+  "basketball", "trophy", "music", "ticket", "video", "book", "check", "list",
+  "building", "globe", "star", "heart", "flame", "food", "plane", "pin", "bell",
+  "gift", "droplet", "leaf", "car", "cart", "mail", "flag", "code", "panel",
+];
+
 const SYSTEM_PROMPT = `You build small dashboard widgets for "Daybreak", a calm personal homepage. Given the user's request, respond with ONLY a single JSON object (no prose, no markdown fences):
 
 {
   "title": string,      // short card title, 1-3 words, e.g. "Birthdays"
-  "emoji": string,      // one emoji used as the card icon
+  "icon": string,       // one icon NAME from the Icon list below (a flat line icon, NOT an emoji)
   "html": string,       // static markup stamped into the card body before the script runs
   "script": string,     // JavaScript, executed as: new Function("widget", script)(api)
   "refreshMs": number | null  // polling interval if the widget fetches live data (>= 60000), else null
 }
+
+## Icon
+Pick the ONE name that best fits the widget from this list — it renders as a flat, monochrome line icon in the card header, exactly like the built-in cards (weather, news, stocks). NEVER return an emoji or a name outside this list; if nothing fits well, use "panel":
+${ICON_NAMES.join(", ")}
+Examples: a politics/news widget -> "building" or "news"; gas or crypto prices -> "money" or "chart"; a birthdays tracker -> "calendar"; a sports standings widget -> "trophy".
 
 You have a web_search tool. USE IT before you finalize the spec whenever the widget touches real-world data: to confirm which data source to use, that an API endpoint actually exists and returns the fields you rely on, and what the current values look like. Never guess an endpoint from memory — a widget wired to a URL that 404s is a failed widget.
 
@@ -161,7 +176,10 @@ export async function generateWidget(
 
   return {
     title: spec.title.trim().slice(0, 40),
-    emoji: typeof spec.emoji === "string" && spec.emoji.trim() ? spec.emoji.trim().slice(0, 8) : "✨",
+    icon:
+      typeof spec.icon === "string" && ICON_NAMES.includes(spec.icon.trim().toLowerCase())
+        ? spec.icon.trim().toLowerCase()
+        : "panel",
     html: typeof spec.html === "string" ? spec.html : "",
     script: spec.script,
     refreshMs:

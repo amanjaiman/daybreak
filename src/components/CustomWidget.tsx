@@ -5,6 +5,7 @@ import type { CustomWidget } from "../lib/customWidgets";
 import { fnHeaders, fnUrl } from "../lib/backend";
 import { useSettings } from "../lib/settings";
 import { RefreshIcon } from "./icons";
+import { WidgetIcon } from "./widgetIcons";
 
 /**
  * The surface a generated widget's script runs against. This is the whole
@@ -202,7 +203,7 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
     return (
       <Card
         title={widget.title}
-        icon={<span className="widget__emoji">{widget.emoji}</span>}
+        icon={<WidgetIcon name={widget.icon} />}
         actions={<span className="widget__actions">{removeButton}</span>}
       >
         <div className="widget__pending">
@@ -220,7 +221,7 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
     return (
       <Card
         title="Couldn't build it"
-        icon={<span className="widget__emoji">⚠️</span>}
+        icon={<WidgetIcon name="alert" />}
         actions={<span className="widget__actions">{removeButton}</span>}
       >
         <div className="widget__error">
@@ -236,7 +237,7 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
   return (
     <Card
       title={widget.title}
-      icon={<span className="widget__emoji">{widget.emoji}</span>}
+      icon={<WidgetIcon name={widget.icon} />}
       actions={
         <span className="widget__actions">
           {widget.refreshMs != null && (

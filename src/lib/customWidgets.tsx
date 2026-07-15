@@ -28,7 +28,8 @@ export type CustomWidget = {
   /** Message shown when generation itself failed (status === "error"). */
   genError?: string;
   title: string;
-  emoji: string;
+  /** Flat icon name from src/components/widgetIcons.tsx (the card icon). */
+  icon: string;
   /** The user's request, kept so a widget can be inspected/regenerated later. */
   prompt: string;
   html: string;
@@ -39,7 +40,7 @@ export type CustomWidget = {
 };
 
 /** What the generation endpoint returns — everything but identity + lifecycle. */
-export type GeneratedWidget = Pick<CustomWidget, "title" | "emoji" | "html" | "script" | "refreshMs">;
+export type GeneratedWidget = Pick<CustomWidget, "title" | "icon" | "html" | "script" | "refreshMs">;
 
 const STORAGE_KEY = "daybreak.customWidgets";
 
@@ -60,7 +61,7 @@ export function loadCustomWidgets(): CustomWidget[] {
           isCustomId((w as CustomWidget).id) &&
           typeof (w as CustomWidget).script === "string",
       )
-      .map((w) => ({ ...w, status: w.status ?? "ready" }));
+      .map((w) => ({ ...w, status: w.status ?? "ready", icon: w.icon ?? "panel" }));
   } catch {
     return [];
   }
@@ -99,7 +100,7 @@ export function CustomWidgetsProvider({ children }: { children: ReactNode }) {
       status: "pending",
       jobId,
       title: "Generating…",
-      emoji: "✨",
+      icon: "panel",
       prompt,
       html: "",
       script: "",
@@ -116,7 +117,7 @@ export function CustomWidgetsProvider({ children }: { children: ReactNode }) {
   const retry: CustomWidgetsContext["retry"] = async (id) => {
     const widget = widgets.find((w) => w.id === id);
     if (!widget) return;
-    patch(id, { status: "pending", jobId: undefined, genError: undefined, title: "Generating…", emoji: "✨" });
+    patch(id, { status: "pending", jobId: undefined, genError: undefined, title: "Generating…", icon: "panel" });
     try {
       const jobId = await startGeneration(widget.prompt);
       patch(id, { jobId });
