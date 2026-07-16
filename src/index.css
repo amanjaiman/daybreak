@@ -1700,6 +1700,14 @@ button {
   .gw-root > .gw-row {
     grid-column: auto;
   }
+  /* Grid items default to min-width:auto and won't shrink below their content,
+     so a nowrap row (headline + pill, ticker + price) would overflow its track
+     and run off the card's right edge. Let them shrink to the track instead. */
+  .news__list > *,
+  .stocks__list > *,
+  .gw-root > .gw-row {
+    min-width: 0;
+  }
 }
 
 @container (min-width: 900px) {
