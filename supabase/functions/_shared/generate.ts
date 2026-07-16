@@ -18,7 +18,7 @@ export type GeneratedWidget = {
   refreshMs: number | null;
 };
 
-export type GenerateOptions = { model?: string; effort?: string };
+export type GenerateOptions = { model?: string; effort?: string; maxOutputTokens?: number };
 
 // The flat icon names a generated widget can wear, matching the built-in
 // cards. MUST stay in sync with the WIDGET_ICONS registry in
@@ -160,6 +160,9 @@ export async function generateWidget(
       tools: [{ type: "web_search" }],
       instructions: SYSTEM_PROMPT,
       input: `Build this widget: ${prompt}`,
+      // Reasoning tokens count against this budget, so keep it generous — a
+      // tight cap truncates the final JSON and yields a half-written script.
+      max_output_tokens: opts.maxOutputTokens ?? 16000,
     }),
   });
 
@@ -168,12 +171,37 @@ export async function generateWidget(
     throw new Error(`OpenAI request failed (${res.status}): ${detail.slice(0, 300)}`);
   }
 
-  const content = outputText((await res.json()) as Parameters<typeof outputText>[0]);
+  const data = (await res.json()) as Parameters<typeof outputText>[0] & {
+    status?: string;
+    incomplete_details?: { reason?: string };
+  };
+  // A truncated response (hit the token budget) would leave the script cut off
+  // mid-statement; fail loudly so the job retries instead of storing a broken
+  // widget that throws "Unexpected end of input" when it runs.
+  if (data.status === "incomplete") {
+    throw new Error(`The model's response was cut off (${data.incomplete_details?.reason ?? "incomplete"}). Try again.`);
+  }
+
+  const content = outputText(data);
   if (!content) throw new Error("OpenAI returned an empty response");
 
   const spec = parseLooseJSON(content) as Partial<GeneratedWidget>;
   if (typeof spec.title !== "string" || !spec.title.trim()) throw new Error("Widget spec is missing a title");
   if (typeof spec.script !== "string" || !spec.script.trim()) throw new Error("Widget spec is missing a script");
+
+  // Reject a script that isn't valid JavaScript before it can become a widget.
+  // The client runs it as new Function("widget", '"use strict";\n' + script),
+  // so compile it the same way here — this catches truncated or malformed code
+  // at generation time (a clean, retryable error) instead of at runtime. Only a
+  // real SyntaxError rejects; if a locked-down runtime forbids new Function at
+  // all (a different error), skip and lean on the truncation guards above.
+  try {
+    new Function("widget", `"use strict";\n${spec.script}`);
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error(`The generated widget code was invalid (${err.message}). Try again.`);
+    }
+  }
 
   return {
     title: spec.title.trim().slice(0, 40),
