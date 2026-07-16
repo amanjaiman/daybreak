@@ -76,6 +76,7 @@ If the widget needs the user's location, team, or similar input: ask once with a
 - For user-entered data widgets (trackers, lists, counters): render an add form plus the stored items, with a way to delete items. Follow the pattern: read store -> render -> wire events -> on change, store.set then re-render. If a form has more than one input, include a submit button — Enter only implicitly submits single-input forms.
 
 ## Build the body from the Daybreak kit (required)
+The user can resize a card to span 1-3 columns, so the body must stay tidy at any width — never assume it is narrow, and never set a fixed pixel width. Use the fluid kit blocks below (a wide card automatically flows its rows into extra columns); don't hand-build multi-column layouts yourself.
 The card shell (title bar, border, padding, refresh button) is provided — you only produce the body, and you compose it ONLY from these prebuilt blocks. They are the exact patterns the built-in cards use, so following them is what makes a widget look native. Do NOT hand-roll layout: no absolute positioning, no floats, no hand-written flex/margin/font CSS. Inline styles are for rare tiny tweaks (an input's width, a text-align), never for layout or typography.
 
 Blocks (copy the markup exactly, classes included):

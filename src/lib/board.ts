@@ -15,6 +15,36 @@ export const isCustomId = (id: string): id is CustomId => id.startsWith("custom:
 
 export const CARD_IDS: CardId[] = ["weather", "todos", "reading", "news", "football", "shows", "stocks"];
 
+// How many of the (up to 3) columns a card spans on the grid. A card anchored
+// in column c can be at most 3 - c wide (column 2 is always width 1), so its
+// span never overflows the board. Only non-default widths (2, 3) are stored.
+export type Span = 1 | 2 | 3;
+export type Spans = Partial<Record<BoardId, 2 | 3>>;
+
+export const spanOf = (spans: Spans | undefined, id: BoardId): Span => spans?.[id] ?? 1;
+
+/** Widest a card in column `col` may be, given `colCount` columns total. */
+export const maxSpan = (col: number, colCount = 3): Span => Math.max(1, colCount - col) as Span;
+
+export const clampSpan = (span: number, col: number, colCount = 3): Span =>
+  (Math.min(Math.max(1, Math.round(span)), maxSpan(col, colCount)) as Span);
+
+/**
+ * Keep spans consistent with the board: drop entries for cards no longer on it,
+ * clamp each remaining span to what its column allows, and store only 2/3.
+ */
+export function normalizeSpans(spans: unknown, columns: BoardId[][]): Spans {
+  const raw = (spans && typeof spans === "object" ? spans : {}) as Record<string, unknown>;
+  const out: Spans = {};
+  columns.forEach((col, c) => {
+    for (const id of col) {
+      const s = clampSpan(Number(raw[id]) || 1, c);
+      if (s !== 1) out[id] = s;
+    }
+  });
+  return out;
+}
+
 // Three user-arranged columns. This grouping approximates the old masonry
 // layout's natural packing as a sane starting point for first-run users.
 export const DEFAULT_BOARD: BoardId[][] = [

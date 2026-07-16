@@ -117,7 +117,7 @@ export function Stocks() {
       {state.status === "loading" && <SkeletonRows rows={Math.max(settings.stocks.length, 2)} height={20} />}
       {state.status === "error" && <div className="empty">Couldn't load quotes.</div>}
       {state.status === "ready" && (
-        <div>
+        <div className="stocks__list">
           {state.data.length === 0 && (
             <div className="empty">
               {settings.stocks.length === 0 ? "Add a ticker to start a watchlist." : "No quotes for your watchlist."}

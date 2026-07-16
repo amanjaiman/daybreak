@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { config } from "../config";
-import { DEFAULT_BOARD, normalizeBoard } from "./board";
-import type { BoardId, CustomId } from "./board";
+import { DEFAULT_BOARD, normalizeBoard, normalizeSpans } from "./board";
+import type { BoardId, CustomId, Spans } from "./board";
 
 export type Topic = { id: string; label: string; query: string };
 export type League = { slug: string; label: string };
@@ -17,6 +17,8 @@ export type Settings = {
   /** Locked view: hides reposition handles, card Edit buttons, and widget Remove. */
   locked: boolean;
   board: BoardId[][];
+  /** Grid widths (2 or 3 columns) for cards that have been resized; default 1. */
+  spans: Spans;
   location: { label: string; latitude: number; longitude: number };
   topics: Topic[];
   nbaTeam: { espnId: string; name: string };
@@ -33,6 +35,7 @@ const defaults: Settings = {
   theme: "system",
   locked: false,
   board: DEFAULT_BOARD,
+  spans: {},
   location: config.location,
   topics: config.topics,
   nbaTeam: { espnId: config.nbaTeam.espnId, name: config.nbaTeam.name },
@@ -61,7 +64,8 @@ function load(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const merged = raw ? { ...defaults, ...(JSON.parse(raw) as Partial<Settings>) } : defaults;
-    return { ...merged, board: normalizeBoard(merged.board, storedCustomIds()) };
+    const board = normalizeBoard(merged.board, storedCustomIds());
+    return { ...merged, board, spans: normalizeSpans(merged.spans, board) };
   } catch {
     return defaults;
   }
