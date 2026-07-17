@@ -1674,7 +1674,9 @@ button {
    rules (.news__list { display:flex }, etc.) at equal specificity. */
 @container (min-width: 560px) {
   .news__list,
-  .stocks__list {
+  .stocks__list,
+  .concert-list,
+  .match-list {
     display: grid;
     grid-template-columns: 1fr 1fr;
     column-gap: 26px;
@@ -1705,6 +1707,8 @@ button {
      and run off the card's right edge. Let them shrink to the track instead. */
   .news__list > *,
   .stocks__list > *,
+  .concert-list > *,
+  .match-list > *,
   .gw-root > .gw-row {
     min-width: 0;
   }
@@ -1713,7 +1717,10 @@ button {
 @container (min-width: 900px) {
   .news__list,
   .stocks__list,
+  .concert-list,
   .gw-root {
     grid-template-columns: repeat(3, 1fr);
   }
+  /* Match rows carry a lot (date + teams + league pill), so keep them 2-up
+     even at 3x where 3 columns would squeeze the team names. */
 }

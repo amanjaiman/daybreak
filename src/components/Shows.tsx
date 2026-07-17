@@ -192,7 +192,11 @@ export function Shows() {
                 : "No upcoming shows for the people you track."}
             </div>
           ) : (
-            state.data.map((s) => <ShowRow show={s} key={s.id} />)
+            <div className="concert-list">
+              {state.data.map((s) => (
+                <ShowRow show={s} key={s.id} />
+              ))}
+            </div>
           )}
 
           {editing && (

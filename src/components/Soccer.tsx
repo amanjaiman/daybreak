@@ -179,9 +179,13 @@ export function Soccer() {
                     : "No upcoming matches in your competitions."}
                 </div>
               )}
-              {visible.map((m) => (
-                <MatchRow match={m} key={m.id} />
-              ))}
+              {visible.length > 0 && (
+                <div className="match-list">
+                  {visible.map((m) => (
+                    <MatchRow match={m} key={m.id} />
+                  ))}
+                </div>
+              )}
               {pages > 1 && (
                 <div className="pager">
                   <button
