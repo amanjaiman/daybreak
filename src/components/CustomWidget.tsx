@@ -10,11 +10,14 @@ import { WidgetIcon } from "./widgetIcons";
 /**
  * The surface a generated widget's script runs against. This is the whole
  * contract between the OpenAI-produced code and the app — the generation
- * system prompt (netlify/functions/generate-widget.ts) documents exactly
+ * system prompt (supabase/functions/_shared/generate.ts) documents exactly
  * this shape, so keep the two in sync.
  */
 type WidgetApi = {
   root: HTMLElement;
+  /** How many columns wide the card currently is: 1, 2, or 3. The script is
+   *  re-run when this changes, so render more content when it's larger. */
+  cols: number;
   store: { get<T>(): T | null; set(value: unknown): void };
   getJSON: (url: string) => Promise<unknown>;
   ai: (request: string) => Promise<unknown>;
@@ -22,6 +25,15 @@ type WidgetApi = {
   sparkline: (values: number[]) => string;
   refresh: () => void;
 };
+
+// The card's column count, matching the CSS container-query breakpoints on
+// .board__item (560/900px). Widgets in the Flow layout (no .board__item
+// ancestor) are always a single column.
+const colsFor = (width: number): number => (width >= 900 ? 3 : width >= 560 ? 2 : 1);
+function cardCols(root: HTMLElement): number {
+  const container = root.closest(".board__item") as HTMLElement | null;
+  return container ? colsFor(container.clientWidth) : 1;
+}
 
 /**
  * Finished sparkline markup for generated widgets — the one chart style the
@@ -62,10 +74,12 @@ function makeApi(
   root: HTMLElement,
   refresh: () => void,
   bypassAiCache: boolean,
+  cols: number,
 ): WidgetApi {
   const key = dataKey(widget.id);
   return {
     root,
+    cols,
     store: {
       get: () => {
         try {
@@ -167,7 +181,9 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
     bypassAiCache.current = false;
     try {
       const fn = new Function("widget", `"use strict";\n${widget.script}`);
-      fn(makeApi(widget, root, () => rerun(), force));
+      // cols is read fresh from the DOM each run; the observer below re-runs
+      // the script whenever the card crosses a column breakpoint.
+      fn(makeApi(widget, root, () => rerun(), force, cardCols(root)));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -176,6 +192,26 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, widget.id, widget.html, widget.script, runKey]);
+
+  // Re-run when the card is resized across a column breakpoint, so width-aware
+  // widgets (widget.cols) render the right amount of content for their size.
+  useEffect(() => {
+    if (!ready) return;
+    const root = rootRef.current;
+    const container = root?.closest(".board__item") as HTMLElement | null;
+    if (!container) return;
+    let last = colsFor(container.clientWidth);
+    const ro = new ResizeObserver(() => {
+      const now = colsFor(container.clientWidth);
+      if (now !== last) {
+        last = now;
+        rerun();
+      }
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, widget.id]);
 
   useEffect(() => {
     if (!ready || !widget.refreshMs) return;
