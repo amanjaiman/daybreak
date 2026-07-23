@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { config } from "../config";
-import { CARD_IDS, DEFAULT_BOARD, DEFAULT_SPANS, normalizeBoard, normalizeSpans } from "./board";
-import type { BoardId, CardId, CustomId, Spans } from "./board";
+import { ALWAYS_ON, CARD_IDS, DEFAULT_BOARD, DEFAULT_SPANS, normalizeBoard, normalizeSpans } from "./board";
+import type { BoardId, CustomId, Spans } from "./board";
 
 export type Topic = { id: string; label: string; query: string };
 export type League = { slug: string; label: string };
@@ -20,8 +20,8 @@ export type Settings = {
   searchProvider: SearchProvider;
   /** False until the first-run setup flow has completed (see Onboarding.tsx). */
   onboarded: boolean;
-  /** Built-in cards left out during onboarding — kept off the board and out of Flow. */
-  hidden: CardId[];
+  /** Cards (built-in or generated) left off via onboarding/Personalize — off the board and out of Flow. */
+  hidden: BoardId[];
   board: BoardId[][];
   /** Grid widths (2 or 3 columns) for cards that have been resized; default 1. */
   spans: Spans;
@@ -78,17 +78,18 @@ function load(): Settings {
     const merged = raw
       ? { ...defaults, onboarded: true, ...(JSON.parse(raw) as Partial<Settings>) }
       : defaults;
+    const customIds = storedCustomIds();
     const hidden = (Array.isArray(merged.hidden) ? merged.hidden : []).filter(
-      (id): id is CardId => (CARD_IDS as string[]).includes(id),
+      (id): id is BoardId =>
+        ((CARD_IDS as string[]).includes(id) || (customIds as string[]).includes(id)) &&
+        !(ALWAYS_ON as string[]).includes(id),
     );
     // Boards saved before the Search card existed get it slotted in by
-    // normalizeBoard — give it its intended full-width span as well (unless
-    // the user has since left it off during onboarding).
+    // normalizeBoard — give it its intended full-width span as well.
     const hadSearch =
-      hidden.includes("search") ||
-      (Array.isArray(merged.board) &&
-        merged.board.some((column) => Array.isArray(column) && column.includes("search")));
-    const board = normalizeBoard(merged.board, storedCustomIds(), hidden);
+      Array.isArray(merged.board) &&
+      merged.board.some((column) => Array.isArray(column) && column.includes("search"));
+    const board = normalizeBoard(merged.board, customIds, hidden);
     const spans = normalizeSpans(merged.spans, board);
     if (!hadSearch) spans.search = 3;
     const searchProvider: SearchProvider = (

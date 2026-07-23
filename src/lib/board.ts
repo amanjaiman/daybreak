@@ -55,20 +55,29 @@ export const DEFAULT_BOARD: BoardId[][] = [
 
 export const DEFAULT_SPANS: Spans = { search: 3 };
 
+// Cards every board keeps — they never appear in `hidden` and aren't offered
+// as choices during onboarding or in Personalize.
+export const ALWAYS_ON: CardId[] = ["search", "todos", "reading"];
+
 /**
  * Guarantee every known card appears exactly once, tolerating settings saved
  * by an older or newer build. `customIds` is the set of generated widgets
  * that currently exist — board entries pointing at deleted widgets are
- * dropped, and widgets missing from the board are slotted in. Built-in cards
- * in `hidden` (left out during onboarding) are dropped and stay off.
+ * dropped, and widgets missing from the board are slotted in. Cards in
+ * `hidden` (built-in or generated, left off via onboarding/Personalize) are
+ * dropped and stay off; ALWAYS_ON cards can't be hidden.
  */
 export function normalizeBoard(
   board: unknown,
   customIds: CustomId[] = [],
-  hidden: CardId[] = [],
+  hidden: BoardId[] = [],
 ): BoardId[][] {
-  const shown = CARD_IDS.filter((id) => !hidden.includes(id));
-  const known = new Set<string>([...shown, ...customIds]);
+  const off = new Set<BoardId>(hidden.filter((id) => !ALWAYS_ON.includes(id as CardId)));
+  const shown = [
+    ...CARD_IDS.filter((id) => !off.has(id)),
+    ...customIds.filter((id) => !off.has(id)),
+  ];
+  const known = new Set<string>(shown);
   const raw = Array.isArray(board) ? (board as unknown[]) : DEFAULT_BOARD;
   const cols: BoardId[][] = [0, 1, 2].map((i) =>
     Array.isArray(raw[i])
@@ -77,15 +86,15 @@ export function normalizeBoard(
   );
   const present = new Set(cols.flat());
 
-  // Search was added after the original built-ins. Existing users should get
-  // it in the same useful first-run position instead of at the bottom of
-  // whichever column happened to be shortest — unless they've left it off.
-  if (!present.has("search") && !hidden.includes("search")) {
+  // Search was added after the original built-ins. Users whose saved board
+  // predates it should get it in the same useful first-run position instead
+  // of at the bottom of whichever column happened to be shortest.
+  if (!present.has("search")) {
     cols[0].unshift("search");
     present.add("search");
   }
 
-  for (const id of [...shown, ...customIds]) {
+  for (const id of shown) {
     if (present.has(id)) continue;
     cols.reduce((shortest, c) => (c.length < shortest.length ? c : shortest)).push(id);
   }

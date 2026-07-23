@@ -4,6 +4,7 @@ import { Board } from "./components/Board";
 import { FlowPage } from "./components/FlowPage";
 import { Fab } from "./components/Fab";
 import { Onboarding } from "./components/Onboarding";
+import { Personalize } from "./components/Personalize";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -71,8 +72,12 @@ export default function App() {
     }
   }, [settings.theme]);
 
-  if (!settings.onboarded || personalizing) {
-    return <Onboarding rerun={settings.onboarded} onClose={() => setPersonalizing(false)} />;
+  if (!settings.onboarded) {
+    return <Onboarding />;
+  }
+
+  if (personalizing) {
+    return <Personalize onClose={() => setPersonalizing(false)} />;
   }
 
   return (

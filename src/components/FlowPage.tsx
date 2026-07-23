@@ -57,9 +57,7 @@ export function FlowPage() {
 
   // Snapshot of the lists at load time — used only for the lede and for
   // ordering sections, so it doesn't need to track edits live.
-  const [openTodos] = useState(() =>
-    hidden.has("todos") ? 0 : storedCount("daybreak.todos", (t: { done: boolean }) => !t.done),
-  );
+  const [openTodos] = useState(() => storedCount("daybreak.todos", (t: { done: boolean }) => !t.done));
   const [savedReads] = useState(() => storedCount("daybreak.reading"));
 
   const allMatches = matches.status === "ready" ? matches.data : [];
@@ -108,9 +106,7 @@ export function FlowPage() {
     });
   }
 
-  if (!hidden.has("todos")) {
-    sections.push({ key: "todos", weight: openTodos > 0 ? 1 : 6, node: <Todos />, compact: true });
-  }
+  sections.push({ key: "todos", weight: openTodos > 0 ? 1 : 6, node: <Todos />, compact: true });
 
   if (fixtures.length > 0) {
     sections.push({
@@ -127,14 +123,12 @@ export function FlowPage() {
     });
   }
 
-  if (!hidden.has("reading")) {
-    sections.push({
-      key: "reading",
-      weight: savedReads > 0 ? 3 : 7,
-      node: <ReadingQueue />,
-      compact: true,
-    });
-  }
+  sections.push({
+    key: "reading",
+    weight: savedReads > 0 ? 3 : 7,
+    node: <ReadingQueue />,
+    compact: true,
+  });
 
   if (topic && news.status === "ready" && news.data.length > 0) {
     sections.push({
@@ -204,7 +198,8 @@ export function FlowPage() {
 
   // Generated widgets read as compact sections between markets and the
   // forecast — the flow CSS strips their card chrome like everything else.
-  for (const widget of widgets) {
+  // Hidden ones (switched off in Personalize) stay out.
+  for (const widget of widgets.filter((w) => !hidden.has(w.id))) {
     sections.push({
       key: widget.id,
       weight: 8.5,
@@ -243,7 +238,7 @@ export function FlowPage() {
 
   return (
     <main className="flow">
-      {!hidden.has("search") && <SearchWidget />}
+      <SearchWidget />
       {lede}
       {rows.map((r) =>
         r.nodes.length === 2 ? (
