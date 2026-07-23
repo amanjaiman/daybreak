@@ -3,7 +3,7 @@
 // moves. Kept dependency-free so both settings.tsx (load-time validation)
 // and Board.tsx (drag logic) can import it without a circular reference.
 
-export type CardId = "weather" | "todos" | "reading" | "news" | "football" | "shows" | "stocks";
+export type CardId = "search" | "weather" | "todos" | "reading" | "news" | "football" | "shows" | "stocks";
 
 // User-generated widgets (see lib/customWidgets.tsx) live on the board next
 // to the built-in cards, keyed by a "custom:" prefix so the two id spaces
@@ -13,7 +13,7 @@ export type BoardId = CardId | CustomId;
 
 export const isCustomId = (id: string): id is CustomId => id.startsWith("custom:");
 
-export const CARD_IDS: CardId[] = ["weather", "todos", "reading", "news", "football", "shows", "stocks"];
+export const CARD_IDS: CardId[] = ["search", "weather", "todos", "reading", "news", "football", "shows", "stocks"];
 
 // How many of the (up to 3) columns a card spans on the grid. A card anchored
 // in column c can be at most 3 - c wide (column 2 is always width 1), so its
@@ -48,10 +48,12 @@ export function normalizeSpans(spans: unknown, columns: BoardId[][]): Spans {
 // Three user-arranged columns. This grouping approximates the old masonry
 // layout's natural packing as a sane starting point for first-run users.
 export const DEFAULT_BOARD: BoardId[][] = [
-  ["weather", "todos", "reading"],
+  ["search", "weather", "todos", "reading"],
   ["news"],
   ["football", "shows", "stocks"],
 ];
+
+export const DEFAULT_SPANS: Spans = { search: 3 };
 
 /**
  * Guarantee every known card appears exactly once, tolerating settings saved
@@ -68,6 +70,15 @@ export function normalizeBoard(board: unknown, customIds: CustomId[] = []): Boar
       : [],
   );
   const present = new Set(cols.flat());
+
+  // Search was added after the original built-ins. Existing users should get
+  // it in the same useful first-run position instead of at the bottom of
+  // whichever column happened to be shortest.
+  if (!present.has("search")) {
+    cols[0].unshift("search");
+    present.add("search");
+  }
+
   for (const id of [...CARD_IDS, ...customIds]) {
     if (present.has(id)) continue;
     cols.reduce((shortest, c) => (c.length < shortest.length ? c : shortest)).push(id);

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { config } from "../config";
-import { DEFAULT_BOARD, normalizeBoard, normalizeSpans } from "./board";
+import { DEFAULT_BOARD, DEFAULT_SPANS, normalizeBoard, normalizeSpans } from "./board";
 import type { BoardId, CustomId, Spans } from "./board";
 
 export type Topic = { id: string; label: string; query: string };
@@ -9,6 +9,7 @@ export type League = { slug: string; label: string };
 
 export type Layout = "grid" | "flow";
 export type Theme = "system" | "light" | "dark";
+export type SearchProvider = "google" | "bing" | "perplexity" | "chatgpt" | "claude";
 
 export type Settings = {
   name: string;
@@ -16,6 +17,7 @@ export type Settings = {
   theme: Theme;
   /** Locked view: hides reposition handles, card Edit buttons, and widget Remove. */
   locked: boolean;
+  searchProvider: SearchProvider;
   board: BoardId[][];
   /** Grid widths (2 or 3 columns) for cards that have been resized; default 1. */
   spans: Spans;
@@ -34,8 +36,9 @@ const defaults: Settings = {
   layout: "grid",
   theme: "system",
   locked: false,
+  searchProvider: "google",
   board: DEFAULT_BOARD,
-  spans: {},
+  spans: DEFAULT_SPANS,
   location: config.location,
   topics: config.topics,
   nbaTeam: { espnId: config.nbaTeam.espnId, name: config.nbaTeam.name },
@@ -64,8 +67,18 @@ function load(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const merged = raw ? { ...defaults, ...(JSON.parse(raw) as Partial<Settings>) } : defaults;
+    const hadSearch =
+      Array.isArray(merged.board) &&
+      merged.board.some((column) => Array.isArray(column) && column.includes("search"));
     const board = normalizeBoard(merged.board, storedCustomIds());
-    return { ...merged, board, spans: normalizeSpans(merged.spans, board) };
+    const spans = normalizeSpans(merged.spans, board);
+    if (!hadSearch) spans.search = 3;
+    const searchProvider: SearchProvider = (
+      ["google", "bing", "perplexity", "chatgpt", "claude"] as const
+    ).includes(merged.searchProvider as SearchProvider)
+      ? merged.searchProvider
+      : defaults.searchProvider;
+    return { ...merged, searchProvider, board, spans };
   } catch {
     return defaults;
   }

@@ -14,12 +14,14 @@ import { Soccer } from "./Soccer";
 import { Shows } from "./Shows";
 import { Stocks } from "./Stocks";
 import { ReadingQueue } from "./ReadingQueue";
+import { SearchWidget } from "./SearchWidget";
 import { GripIcon } from "./icons";
 
 // Record<CardId, …> means TypeScript won't compile if a card is added to
 // CardId without a matching entry here (or vice versa) — the type system
 // keeps this registry and lib/board.ts's id list in sync.
 const CARDS: Record<CardId, ReactNode> = {
+  search: <SearchWidget />,
   weather: <Weather />,
   todos: <Todos />,
   reading: <ReadingQueue />,
@@ -30,6 +32,7 @@ const CARDS: Record<CardId, ReactNode> = {
 };
 
 const TITLES: Record<CardId, string> = {
+  search: "Search",
   weather: "Weather",
   todos: "Todos",
   reading: "Reading",

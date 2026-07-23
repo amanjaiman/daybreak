@@ -11,6 +11,7 @@ import { Todos } from "./Todos";
 import { ReadingQueue } from "./ReadingQueue";
 import { useCustomWidgets } from "../lib/customWidgets";
 import { CustomWidgetCard } from "./CustomWidget";
+import { SearchWidget } from "./SearchWidget";
 
 /**
  * The "Flow" layout: one narrow column that reads top to bottom, ordered by
@@ -233,6 +234,7 @@ export function FlowPage() {
 
   return (
     <main className="flow">
+      <SearchWidget />
       {lede}
       {rows.map((r) =>
         r.nodes.length === 2 ? (
