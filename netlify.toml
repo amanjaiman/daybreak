@@ -23,6 +23,14 @@
   status = 200
   force = true
 
+# Google News RSS — general-interest headlines for any News topic (Hacker
+# News, our other source, only covers tech). Returns XML, parsed client-side.
+[[redirects]]
+  from = "/api/gnews/*"
+  to = "https://news.google.com/:splat"
+  status = 200
+  force = true
+
 # Reading-queue link enrichment (title + favicon) — see netlify/functions/unfurl.ts.
 [[redirects]]
   from = "/api/unfurl"

@@ -5,14 +5,6 @@ import { useSettings } from "../lib/settings";
 import { Card, EditButton, SkeletonRows } from "./Card";
 import { NewsIcon } from "./icons";
 
-type HNHit = {
-  objectID: string;
-  title: string;
-  url: string | null;
-  points: number;
-  created_at: string;
-};
-
 type ESPNArticle = {
   headline: string;
   published: string;
@@ -21,36 +13,34 @@ type ESPNArticle = {
 
 export type Story = { id: string; title: string; url: string; meta: string };
 
+/**
+ * Headlines for a topic via Google News RSS — general-interest coverage of
+ * whatever the user follows (K-pop, cricket, gardening…), where our other
+ * source (Hacker News) only surfaces tech. The `query` supports Google's OR
+ * operator, matching how topic queries are stored (e.g. "AI OR LLM").
+ */
 export async function loadTopic(query: string): Promise<Story[]> {
-  const since = Math.floor(Date.now() / 1000) - 7 * 24 * 3600;
-  // Algolia matches all query words, so run each OR-term separately and merge.
-  const terms = query.split(" OR ");
-  const results = await Promise.allSettled(
-    terms.map((term) =>
-      getJSON<{ hits: HNHit[] }>(
-        `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(term)}` +
-          `&tags=story&numericFilters=created_at_i>${since}&hitsPerPage=30`,
-      ),
-    ),
+  const res = await fetch(
+    `/api/gnews/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`,
   );
-  const seen = new Map<string, HNHit>();
-  for (const r of results) {
-    if (r.status !== "fulfilled") continue;
-    for (const h of r.value.hits) seen.set(h.objectID, h);
-  }
-  const ranked = [...seen.values()].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
-  return ranked.slice(0, 6).map((h) => {
-    let domain = "news.ycombinator.com";
-    try {
-      if (h.url) domain = new URL(h.url).hostname.replace(/^www\./, "");
-    } catch {
-      /* keep default */
-    }
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const xml = new DOMParser().parseFromString(await res.text(), "application/xml");
+  if (xml.querySelector("parsererror")) throw new Error("Couldn't read the news feed.");
+
+  return [...xml.querySelectorAll("item")].slice(0, 6).map((item, i) => {
+    const rawTitle = item.querySelector("title")?.textContent ?? "";
+    const source = item.querySelector("source")?.textContent ?? "";
+    // Google News titles read "Headline - Source"; drop the redundant suffix.
+    const title =
+      source && rawTitle.endsWith(` - ${source}`)
+        ? rawTitle.slice(0, -(source.length + 3))
+        : rawTitle;
+    const pubDate = item.querySelector("pubDate")?.textContent;
     return {
-      id: h.objectID,
-      title: h.title,
-      url: h.url ?? `https://news.ycombinator.com/item?id=${h.objectID}`,
-      meta: `${domain} · ${h.points} points · ${timeAgo(h.created_at)}`,
+      id: item.querySelector("guid")?.textContent || String(i),
+      title,
+      url: item.querySelector("link")?.textContent ?? "",
+      meta: [source, pubDate ? timeAgo(pubDate) : null].filter(Boolean).join(" · "),
     };
   });
 }

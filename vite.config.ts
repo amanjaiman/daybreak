@@ -260,6 +260,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/yahoo/, ''),
         },
+        // Google News RSS — general-interest topic headlines (XML, no CORS).
+        '/api/gnews': {
+          target: 'https://news.google.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/gnews/, ''),
+        },
       },
     },
   }
