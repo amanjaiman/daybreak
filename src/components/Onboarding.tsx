@@ -27,6 +27,19 @@ import {
 
 type StepId = "welcome" | "location" | "widgets" | "news" | "football" | "shows" | "stocks" | "done";
 
+// Every stage the flow can pass through, in order. The progress bar measures
+// against this fixed list so picking fewer widgets can't rewind it.
+const STAGE_ORDER: StepId[] = [
+  "welcome",
+  "location",
+  "widgets",
+  "news",
+  "football",
+  "shows",
+  "stocks",
+  "done",
+];
+
 const OPTIONAL_IDS = WIDGET_CATALOG.map((w) => w.id);
 
 export function Onboarding() {
@@ -59,7 +72,10 @@ export function Onboarding() {
   const [index, setIndex] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const step = steps[Math.min(index, steps.length - 1)];
-  const progress = steps.length > 1 ? index / (steps.length - 1) : 1;
+  // Progress is measured against the fixed set of possible stages, not the
+  // currently-active subset — so toggling widgets on the picker (which adds or
+  // drops later steps) never makes the bar move. It only advances on Continue.
+  const progress = STAGE_ORDER.indexOf(step) / (STAGE_ORDER.length - 1);
 
   const back = () => setIndex((i) => Math.max(0, i - 1));
 
@@ -184,8 +200,7 @@ export function Onboarding() {
               <span className="onboard__overline">Welcome to Daybreak</span>
               <h1 className="onboard__title">A calm start to the day.</h1>
               <p className="onboard__sub">
-                Your morning at a glance — weather, headlines, matches, whatever you care about. A
-                few quick questions and it's yours. First: what should we call you?
+                Use AI to make it yours. But first: what should we call you?
               </p>
               <input
                 className="onboard__input onboard__input--lg"
@@ -328,10 +343,9 @@ export function Onboarding() {
           {step === "done" && (
             <>
               <span className="onboard__overline">All set</span>
-              <h1 className="onboard__title">Enjoy the view, {name.trim() || "friend"}.</h1>
+              <h1 className="onboard__title">Daybreak is ready.</h1>
               <p className="onboard__sub">
-                Your board is ready. Every card can be rearranged, resized, and refined later — and
-                the Daybreak bubble in the corner can even generate new widgets from a sentence.
+                Use the bubble to generate widgets and make it yours.
               </p>
               <div className="onboard__row">
                 <button type="button" className="onboard__back" onClick={back}>
