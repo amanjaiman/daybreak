@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { useSettings } from "../lib/settings";
 import { useCustomWidgets } from "../lib/customWidgets";
 import { startGeneration } from "../lib/generateJob";
-import { FlowIcon, GridIcon, LockIcon, MoonIcon, SparkleIcon, SunIcon, UnlockIcon } from "./icons";
+import { FlowIcon, GridIcon, LockIcon, MoonIcon, SlidersIcon, SparkleIcon, SunIcon, UnlockIcon } from "./icons";
 
 // The favicon's dawn mark, drawn with theme tokens so the bubble follows
 // light/dark mode: dark disc with light strokes in light mode, and the
@@ -86,9 +86,10 @@ function GenerateDialog({ onClose }: { onClose: () => void }) {
 /**
  * The floating Daybreak bubble (bottom right). The bubble itself is the
  * Generate Widget action; hovering it fans out the secondary bubbles —
- * view lock, the dash/flow layout switch, and the light/dark theme toggle.
+ * personalize (re-run setup), view lock, the dash/flow layout switch, and
+ * the light/dark theme toggle.
  */
-export function Fab() {
+export function Fab({ onPersonalize }: { onPersonalize: () => void }) {
   const { settings, update } = useSettings();
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState(false);
@@ -134,6 +135,17 @@ export function Fab() {
         }}
       >
         <div className="fab__menu" aria-hidden={!open || dialog}>
+          <button
+            className="fab__action"
+            tabIndex={open ? 0 : -1}
+            onClick={() => {
+              setOpen(false);
+              onPersonalize();
+            }}
+          >
+            <span className="fab__label">Personalize</span>
+            <SlidersIcon />
+          </button>
           <button
             className="fab__action"
             tabIndex={open ? 0 : -1}

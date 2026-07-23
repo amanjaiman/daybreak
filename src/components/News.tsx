@@ -67,9 +67,9 @@ async function loadTeamNews(espnId: string): Promise<Story[]> {
   }));
 }
 
-type NBATeam = { id: string; name: string };
+export type NBATeam = { id: string; name: string };
 
-async function loadNBATeams(): Promise<NBATeam[]> {
+export async function loadNBATeams(): Promise<NBATeam[]> {
   const data = await getJSON<{
     sports: { leagues: { teams: { team: { id: string; displayName: string } }[] }[] }[];
   }>(`/api/espn/apis/site/v2/sports/basketball/nba/teams`);
@@ -82,14 +82,18 @@ export function News() {
   const { settings, update } = useSettings();
   const tabs = [
     ...settings.topics.map((t) => ({ id: t.id, label: t.label, load: () => loadTopic(t.query) })),
-    {
-      id: "team",
-      label: settings.nbaTeam.name,
-      load: () => loadTeamNews(settings.nbaTeam.espnId),
-    },
+    ...(settings.nbaTeam
+      ? [
+          {
+            id: "team",
+            label: settings.nbaTeam.name,
+            load: () => loadTeamNews(settings.nbaTeam!.espnId),
+          },
+        ]
+      : []),
   ];
 
-  const [active, setActive] = useState(tabs[0]?.id);
+  const [active, setActive] = useState<string | undefined>(tabs[0]?.id);
   const tab = tabs.find((t) => t.id === active) ?? tabs[0];
 
   const [editing, setEditing] = useState(false);
@@ -97,8 +101,13 @@ export function News() {
   const [terms, setTerms] = useState("");
   const [teams, setTeams] = useState<NBATeam[] | null>(null);
 
-  // Refresh the visible tab every 15 minutes.
-  const state = useFetched(tab.load, [tab.id, settings.nbaTeam.espnId], 15 * 60 * 1000);
+  // Refresh the visible tab every 15 minutes. `tab` is undefined when every
+  // topic (and the team tab) has been removed — nothing to fetch then.
+  const state = useFetched(
+    () => (tab ? tab.load() : Promise.resolve([])),
+    [tab?.id, settings.nbaTeam?.espnId],
+    15 * 60 * 1000,
+  );
 
   // Only fetch the NBA team list once someone opens edit mode.
   useEffect(() => {
@@ -124,7 +133,7 @@ export function News() {
 
   const removeTopic = (id: string) => {
     update({ topics: settings.topics.filter((t) => t.id !== id) });
-    if (active === id) setActive("team");
+    if (active === id) setActive(tabs.find((t) => t.id !== id)?.id);
   };
 
   return (
@@ -187,14 +196,22 @@ export function News() {
           <label className="track__row">
             Team news
             <select
-              value={settings.nbaTeam.espnId}
+              value={settings.nbaTeam?.espnId ?? ""}
               onChange={(e) => {
+                if (!e.target.value) {
+                  update({ nbaTeam: null });
+                  if (active === "team") setActive(tabs.find((t) => t.id !== "team")?.id);
+                  return;
+                }
                 const team = teams?.find((t) => t.id === e.target.value);
                 if (team) update({ nbaTeam: { espnId: team.id, name: team.name.split(" ").pop()! } });
               }}
             >
-              {teams === null && <option>Loading teams…</option>}
-              {teams?.length === 0 && <option>Couldn't load teams</option>}
+              <option value="">No team tab</option>
+              {teams === null && settings.nbaTeam && (
+                <option value={settings.nbaTeam.espnId}>{settings.nbaTeam.name}</option>
+              )}
+              {teams?.length === 0 && <option disabled>Couldn't load teams</option>}
               {teams?.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -209,7 +226,10 @@ export function News() {
           {state.status === "error" && <div className="empty">Couldn't load stories.</div>}
           {state.status === "ready" && (
             <div className="news__list">
-              {state.data.length === 0 && (
+              {tabs.length === 0 && (
+                <div className="empty">Add topics to follow from the Edit button.</div>
+              )}
+              {tabs.length > 0 && state.data.length === 0 && (
                 <div className="empty">Nothing new in the last few days.</div>
               )}
               {state.data.map((s) => (

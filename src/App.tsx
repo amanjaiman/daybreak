@@ -3,6 +3,7 @@ import { useSettings } from "./lib/settings";
 import { Board } from "./components/Board";
 import { FlowPage } from "./components/FlowPage";
 import { Fab } from "./components/Fab";
+import { Onboarding } from "./components/Onboarding";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -50,6 +51,9 @@ function EditableName() {
 
 export default function App() {
   const { settings } = useSettings();
+  // Re-running setup from the bubble menu; first runs are driven by the
+  // persisted `onboarded` flag instead.
+  const [personalizing, setPersonalizing] = useState(false);
   const flow = settings.layout === "flow";
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -66,6 +70,10 @@ export default function App() {
       document.documentElement.dataset.theme = settings.theme;
     }
   }, [settings.theme]);
+
+  if (!settings.onboarded || personalizing) {
+    return <Onboarding rerun={settings.onboarded} onClose={() => setPersonalizing(false)} />;
+  }
 
   return (
     <div className={`shell${flow ? " shell--flow" : ""}`}>
@@ -85,7 +93,7 @@ export default function App() {
         Quotes via Yahoo Finance
       </footer>
 
-      <Fab />
+      <Fab onPersonalize={() => setPersonalizing(true)} />
     </div>
   );
 }

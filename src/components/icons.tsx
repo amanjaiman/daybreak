@@ -130,6 +130,20 @@ export const GripIcon = () => (
   </svg>
 );
 
+export const MagnifierIcon = () => (
+  <svg {...base}>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="m15.8 15.8 4.7 4.7" />
+  </svg>
+);
+
+export const SlidersIcon = () => (
+  <svg {...base}>
+    <path d="M5 5v4.5M5 13.5V19M12 5v1.5M12 10.5V19M19 5v7.5M19 16.5V19" />
+    <path d="M3 11h4M10 8.5h4M17 14.5h4" />
+  </svg>
+);
+
 export const CheckIcon = () => (
   <svg viewBox="0 0 12 12" fill="none" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
     <path d="m2.5 6.5 2.5 2.5 4.5-6" />

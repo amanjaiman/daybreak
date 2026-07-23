@@ -8,8 +8,8 @@ import { TicketIcon } from "./icons";
 
 // A tracked performer — anyone on Bandsintown (musicians, comedians, …).
 // `lat`/`lon` scope their shows to config.concertRadiusMiles around a place;
-// null means "anywhere on tour".
-type Tracked = {
+// null means "anywhere on tour". Exported so onboarding can seed the list.
+export type Tracked = {
   id: string;
   name: string;
   locLabel: string | null;
@@ -33,7 +33,7 @@ type BITEvent = {
   venue: { name: string; city: string; region?: string; latitude: string; longitude: string };
 };
 
-const STORAGE_KEY = "daybreak.tracked";
+export const TRACKED_KEY = "daybreak.tracked";
 
 function seed(): Tracked[] {
   const { label, latitude, longitude } = config.location;
@@ -48,7 +48,7 @@ function seed(): Tracked[] {
 
 function loadTracked(): Tracked[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(TRACKED_KEY);
     return raw ? (JSON.parse(raw) as Tracked[]) : seed();
   } catch {
     return seed();
@@ -137,7 +137,7 @@ export function Shows() {
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tracked));
+    localStorage.setItem(TRACKED_KEY, JSON.stringify(tracked));
   }, [tracked]);
 
   const trackedKey = tracked.map((t) => `${t.name}@${t.lat},${t.lon}`).join("|");

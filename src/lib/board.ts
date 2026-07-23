@@ -59,10 +59,16 @@ export const DEFAULT_SPANS: Spans = { search: 3 };
  * Guarantee every known card appears exactly once, tolerating settings saved
  * by an older or newer build. `customIds` is the set of generated widgets
  * that currently exist — board entries pointing at deleted widgets are
- * dropped, and widgets missing from the board are slotted in.
+ * dropped, and widgets missing from the board are slotted in. Built-in cards
+ * in `hidden` (left out during onboarding) are dropped and stay off.
  */
-export function normalizeBoard(board: unknown, customIds: CustomId[] = []): BoardId[][] {
-  const known = new Set<string>([...CARD_IDS, ...customIds]);
+export function normalizeBoard(
+  board: unknown,
+  customIds: CustomId[] = [],
+  hidden: CardId[] = [],
+): BoardId[][] {
+  const shown = CARD_IDS.filter((id) => !hidden.includes(id));
+  const known = new Set<string>([...shown, ...customIds]);
   const raw = Array.isArray(board) ? (board as unknown[]) : DEFAULT_BOARD;
   const cols: BoardId[][] = [0, 1, 2].map((i) =>
     Array.isArray(raw[i])
@@ -73,17 +79,31 @@ export function normalizeBoard(board: unknown, customIds: CustomId[] = []): Boar
 
   // Search was added after the original built-ins. Existing users should get
   // it in the same useful first-run position instead of at the bottom of
-  // whichever column happened to be shortest.
-  if (!present.has("search")) {
+  // whichever column happened to be shortest — unless they've left it off.
+  if (!present.has("search") && !hidden.includes("search")) {
     cols[0].unshift("search");
     present.add("search");
   }
 
-  for (const id of [...CARD_IDS, ...customIds]) {
+  for (const id of [...shown, ...customIds]) {
     if (present.has(id)) continue;
     cols.reduce((shortest, c) => (c.length < shortest.length ? c : shortest)).push(id);
   }
   return cols;
+}
+
+/**
+ * Spread cards so no column sits empty while another stacks several — a board
+ * holding only a few onboarding picks should still fill its width.
+ */
+export function balanceBoard(columns: BoardId[][]): BoardId[][] {
+  const next = columns.map((c) => [...c]);
+  for (;;) {
+    const empty = next.find((c) => c.length === 0);
+    const longest = next.reduce((a, b) => (b.length > a.length ? b : a));
+    if (!empty || longest.length < 2) return next;
+    empty.push(longest.pop()!);
+  }
 }
 
 /** Move `id` to `target` (a column + insertion index, measured before removal), returning new columns. */

@@ -5,8 +5,8 @@ import type { League } from "../lib/settings";
 import { Card, EditButton, SkeletonRows } from "./Card";
 import { BallIcon } from "./icons";
 
-// Competitions offered in edit mode (ESPN league slugs).
-const LEAGUE_CATALOG: League[] = [
+// Competitions offered in edit mode and onboarding (ESPN league slugs).
+export const LEAGUE_CATALOG: League[] = [
   { slug: "fifa.world", label: "World Cup" },
   { slug: "uefa.champions", label: "Champions League" },
   { slug: "uefa.europa", label: "Europa League" },

@@ -40,12 +40,15 @@ function Section({ label, children }: { label: ReactNode; children: ReactNode })
 export function FlowPage() {
   const { settings } = useSettings();
   const { widgets } = useCustomWidgets();
+  // Widgets left off during onboarding stay out of the flow as well — their
+  // hooks get empty inputs so nothing is fetched on their behalf.
+  const hidden = new Set(settings.hidden);
   const weather = useWeather(settings.location.latitude, settings.location.longitude);
-  const matches = useMatches(settings.soccerLeagues);
+  const matches = useMatches(hidden.has("football") ? [] : settings.soccerLeagues);
   const shows = useUpcomingShows(settings.concertRadiusMiles);
-  const quotes = useQuotes(settings.stocks);
+  const quotes = useQuotes(hidden.has("stocks") ? [] : settings.stocks);
 
-  const topic = settings.topics[0];
+  const topic = hidden.has("news") ? undefined : settings.topics[0];
   const news = useFetched(
     () => (topic ? loadTopic(topic.query) : Promise.resolve([])),
     [topic?.id],
@@ -54,7 +57,9 @@ export function FlowPage() {
 
   // Snapshot of the lists at load time — used only for the lede and for
   // ordering sections, so it doesn't need to track edits live.
-  const [openTodos] = useState(() => storedCount("daybreak.todos", (t: { done: boolean }) => !t.done));
+  const [openTodos] = useState(() =>
+    hidden.has("todos") ? 0 : storedCount("daybreak.todos", (t: { done: boolean }) => !t.done),
+  );
   const [savedReads] = useState(() => storedCount("daybreak.reading"));
 
   const allMatches = matches.status === "ready" ? matches.data : [];
@@ -64,7 +69,7 @@ export function FlowPage() {
   const fixtures = (today.length > 0 ? today : upcoming).slice(0, 4);
 
   const lede =
-    weather.status === "ready" ? (
+    !hidden.has("weather") && weather.status === "ready" ? (
       <p className="flow__lede">
         It's <b>{Math.round(weather.data.current.temperature_2m)}°</b> and{" "}
         {wmo(weather.data.current.weather_code).label.toLowerCase()} in {settings.location.label}.
@@ -103,7 +108,9 @@ export function FlowPage() {
     });
   }
 
-  sections.push({ key: "todos", weight: openTodos > 0 ? 1 : 6, node: <Todos />, compact: true });
+  if (!hidden.has("todos")) {
+    sections.push({ key: "todos", weight: openTodos > 0 ? 1 : 6, node: <Todos />, compact: true });
+  }
 
   if (fixtures.length > 0) {
     sections.push({
@@ -120,12 +127,14 @@ export function FlowPage() {
     });
   }
 
-  sections.push({
-    key: "reading",
-    weight: savedReads > 0 ? 3 : 7,
-    node: <ReadingQueue />,
-    compact: true,
-  });
+  if (!hidden.has("reading")) {
+    sections.push({
+      key: "reading",
+      weight: savedReads > 0 ? 3 : 7,
+      node: <ReadingQueue />,
+      compact: true,
+    });
+  }
 
   if (topic && news.status === "ready" && news.data.length > 0) {
     sections.push({
@@ -146,7 +155,7 @@ export function FlowPage() {
     });
   }
 
-  if (shows.status === "ready" && shows.data.length > 0) {
+  if (!hidden.has("shows") && shows.status === "ready" && shows.data.length > 0) {
     sections.push({
       key: "shows",
       weight: 5.5,
@@ -204,7 +213,7 @@ export function FlowPage() {
     });
   }
 
-  if (weather.status === "ready") {
+  if (!hidden.has("weather") && weather.status === "ready") {
     sections.push({
       key: "forecast",
       weight: 9,
@@ -234,7 +243,7 @@ export function FlowPage() {
 
   return (
     <main className="flow">
-      <SearchWidget />
+      {!hidden.has("search") && <SearchWidget />}
       {lede}
       {rows.map((r) =>
         r.nodes.length === 2 ? (
