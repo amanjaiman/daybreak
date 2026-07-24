@@ -17,11 +17,34 @@ function Logo() {
   );
 }
 
+// Prompts offered to first-timers who may not know what "generate a widget"
+// can do — clicking one fills the box so they can send or tweak it.
+const STARTER_IDEAS: { label: string; prompt: string }[] = [
+  {
+    label: "Sports",
+    prompt:
+      "Create a widget that shows me the upcoming NBA games, and also optionally let's me follow one specific team so I can always have their upcoming games in view. There should be a clear distinction between other games and games of the team I'm following.",
+  },
+  {
+    label: "Gas prices",
+    prompt:
+      "Create a widget that shows me the average gas price in my area given a zipcode, and also a chart of the gas price in the last month so I can see the trend. In this case, increasing is red and decreasing is green.",
+  },
+  {
+    label: "Planner",
+    prompt:
+      "Give me a daily planner so I can see todos in an hourly view, with enough space between tasks so it's easy to read.",
+  },
+];
+
 function GenerateDialog({ onClose }: { onClose: () => void }) {
-  const { addPending } = useCustomWidgets();
+  const { addPending, widgets } = useCustomWidgets();
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Only nudge people who haven't generated anything yet.
+  const firstTime = widgets.length === 0;
 
   // Kicking off the job returns fast (~1s); the widget then builds in the
   // background and shows as a placeholder card on the board. So we only wait
@@ -52,7 +75,26 @@ function GenerateDialog({ onClose }: { onClose: () => void }) {
         <p className="genie__hint">
           Describe what you want to keep an eye on — it's built to match Daybreak and added to your board.
         </p>
+        {firstTime && (
+          <div className="genie__ideas">
+            <span className="genie__ideas-label">Try</span>
+            {STARTER_IDEAS.map((idea) => (
+              <button
+                type="button"
+                key={idea.label}
+                className="genie__idea"
+                onClick={() => {
+                  setPrompt(idea.prompt);
+                  inputRef.current?.focus();
+                }}
+              >
+                {idea.label}
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
+          ref={inputRef}
           className="genie__input"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
@@ -180,9 +222,7 @@ export function Fab({ onPersonalize }: { onPersonalize: () => void }) {
             setOpen(false);
           }}
         >
-          <span className="fab__label fab__label--logo">
-            <SparkleIcon /> Generate widget
-          </span>
+          <span className="fab__label fab__label--logo">Generate widget</span>
           <Logo />
         </button>
       </div>

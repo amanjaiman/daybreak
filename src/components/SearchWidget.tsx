@@ -66,21 +66,33 @@ export function SearchWidget() {
     window.open(provider.searchUrl(query), "_blank", "noopener,noreferrer");
   };
 
+  // The active engine's logo is always shown; hovering or focusing the group
+  // fans the rest out so another can be picked. Active-first ordering keeps the
+  // visible logo in place as the others slide out beside it.
+  const ordered = [provider, ...PROVIDERS.filter((p) => p.id !== provider.id)];
+
   return (
     <section className="search-widget" aria-label="Web search">
       <form className="search-widget__bar" role="search" onSubmit={submit}>
-        <div className="search-widget__providers" role="group" aria-label="Search provider">
-          {PROVIDERS.map(({ id, label, Icon, className }) => {
+        <div className="search-widget__providers" role="group" aria-label="Search engine">
+          {ordered.map(({ id, label, Icon, className }) => {
             const selected = id === provider.id;
             return (
               <button
                 key={id}
                 type="button"
                 aria-pressed={selected}
-                aria-label={label}
+                aria-label={selected ? `Search engine: ${label}. Change it` : `Use ${label}`}
                 title={label}
-                className={`search-widget__provider ${className}${selected ? " is-active" : ""}`}
-                onClick={() => update({ searchProvider: id })}
+                className={
+                  `search-widget__provider ${className}` + (selected ? " is-active" : " is-extra")
+                }
+                onClick={(e) => {
+                  update({ searchProvider: id });
+                  // Drop focus so the picker collapses back to just the pick
+                  // (it reopens on the next hover or focus).
+                  e.currentTarget.blur();
+                }}
               >
                 <Icon aria-hidden="true" />
               </button>

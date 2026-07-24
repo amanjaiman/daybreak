@@ -1418,6 +1418,40 @@ button {
   color: var(--ink-3);
 }
 
+/* First-run idea chips above the box — a running head start on what to ask. */
+.genie__ideas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+}
+
+.genie__ideas-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.genie__idea {
+  padding: 5px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.genie__idea:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .genie__input {
   width: 100%;
   resize: vertical;
@@ -2321,7 +2355,6 @@ button {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 2px;
   padding: 2px;
 }
 
@@ -2349,6 +2382,39 @@ button {
 
 .search-widget__provider.is-active {
   background: var(--surface-2);
+}
+
+/* Only the active engine shows; the rest stay collapsed until the group is
+   hovered or focused, then fan out to the right of it. */
+.search-widget__provider.is-extra {
+  width: 0;
+  margin-left: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: scale(0.4);
+  pointer-events: none;
+  transition:
+    width 200ms cubic-bezier(0.22, 0.8, 0.36, 1),
+    margin 200ms cubic-bezier(0.22, 0.8, 0.36, 1),
+    opacity 150ms ease,
+    transform 200ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.search-widget__providers:hover .search-widget__provider.is-extra,
+.search-widget__providers:focus-within .search-widget__provider.is-extra {
+  width: 34px;
+  margin-left: 2px;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-widget__provider.is-extra {
+    transition: opacity 120ms ease;
+  }
 }
 
 .search-widget__provider.is-google.is-active { color: #4285f4; }
