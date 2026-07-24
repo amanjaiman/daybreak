@@ -2494,7 +2494,8 @@ button {
   .news__list,
   .stocks__list,
   .concert-list,
-  .match-list {
+  .match-list,
+  .pod-list {
     display: grid;
     grid-template-columns: 1fr 1fr;
     column-gap: 26px;
@@ -2527,6 +2528,7 @@ button {
   .stocks__list > *,
   .concert-list > *,
   .match-list > *,
+  .pod-list > *,
   .gw-root > .gw-row {
     min-width: 0;
   }
@@ -2536,6 +2538,7 @@ button {
   .news__list,
   .stocks__list,
   .concert-list,
+  .pod-list,
   .gw-root {
     grid-template-columns: repeat(3, 1fr);
   }
