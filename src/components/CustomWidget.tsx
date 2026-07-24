@@ -158,7 +158,7 @@ function makeApi(
  */
 export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
   const { remove, retry } = useCustomWidgets();
-  const { settings } = useSettings();
+  const { settings, update } = useSettings();
   const rootRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [runKey, setRunKey] = useState(0);
@@ -219,10 +219,20 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
     return () => clearInterval(timer);
   }, [ready, widget.refreshMs]);
 
+  // A finished widget is only taken off the board (bring it back from
+  // Personalize); deleting for good — including a half-built or failed one —
+  // happens there too, or here for pending/error states.
   const removeButton = !settings.locked && (
     <button
       className="card__more card__more--reveal"
       onClick={() => {
+        if (widget.status === "ready") {
+          update({
+            hidden: [...settings.hidden, widget.id],
+            board: settings.board.map((col) => col.filter((c) => c !== widget.id)),
+          });
+          return;
+        }
         const msg =
           widget.status === "pending"
             ? `Stop building the "${widget.title}" widget?`

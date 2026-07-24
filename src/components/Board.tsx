@@ -14,12 +14,17 @@ import { Soccer } from "./Soccer";
 import { Shows } from "./Shows";
 import { Stocks } from "./Stocks";
 import { ReadingQueue } from "./ReadingQueue";
+import { SearchWidget } from "./SearchWidget";
+import { Notes } from "./Notes";
+import { FocusTimer } from "./FocusTimer";
+import { Podcasts } from "./Podcasts";
 import { GripIcon } from "./icons";
 
 // Record<CardId, …> means TypeScript won't compile if a card is added to
 // CardId without a matching entry here (or vice versa) — the type system
 // keeps this registry and lib/board.ts's id list in sync.
 const CARDS: Record<CardId, ReactNode> = {
+  search: <SearchWidget />,
   weather: <Weather />,
   todos: <Todos />,
   reading: <ReadingQueue />,
@@ -27,9 +32,13 @@ const CARDS: Record<CardId, ReactNode> = {
   football: <Soccer />,
   shows: <Shows />,
   stocks: <Stocks />,
+  notes: <Notes />,
+  focus: <FocusTimer />,
+  podcasts: <Podcasts />,
 };
 
 const TITLES: Record<CardId, string> = {
+  search: "Search",
   weather: "Weather",
   todos: "Todos",
   reading: "Reading",
@@ -37,6 +46,9 @@ const TITLES: Record<CardId, string> = {
   football: "Football",
   shows: "Shows",
   stocks: "Stocks",
+  notes: "Notes",
+  focus: "Focus",
+  podcasts: "Podcasts",
 };
 
 type DropTarget = { col: number; index: number };

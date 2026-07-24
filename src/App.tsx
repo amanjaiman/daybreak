@@ -3,6 +3,8 @@ import { useSettings } from "./lib/settings";
 import { Board } from "./components/Board";
 import { FlowPage } from "./components/FlowPage";
 import { Fab } from "./components/Fab";
+import { Onboarding } from "./components/Onboarding";
+import { Personalize } from "./components/Personalize";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -50,6 +52,9 @@ function EditableName() {
 
 export default function App() {
   const { settings } = useSettings();
+  // Re-running setup from the bubble menu; first runs are driven by the
+  // persisted `onboarded` flag instead.
+  const [personalizing, setPersonalizing] = useState(false);
   const flow = settings.layout === "flow";
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -67,6 +72,14 @@ export default function App() {
     }
   }, [settings.theme]);
 
+  if (!settings.onboarded) {
+    return <Onboarding />;
+  }
+
+  if (personalizing) {
+    return <Personalize onClose={() => setPersonalizing(false)} />;
+  }
+
   return (
     <div className={`shell${flow ? " shell--flow" : ""}`}>
       <header>
@@ -81,11 +94,11 @@ export default function App() {
       {flow ? <FlowPage /> : <Board />}
 
       <footer className="footer">
-        Weather by Open-Meteo · News via Hacker News &amp; ESPN · Concerts via Bandsintown ·
-        Quotes via Yahoo Finance
+        Weather by Open-Meteo · News via Google News · Concerts via Bandsintown · Quotes via Yahoo
+        Finance · Podcasts via Apple
       </footer>
 
-      <Fab />
+      <Fab onPersonalize={() => setPersonalizing(true)} />
     </div>
   );
 }

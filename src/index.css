@@ -19,8 +19,8 @@
   --ink-2: #57534e;
   --ink-3: #a19a92;
 
-  --accent: #b45309;
-  --accent-soft: #fdf3e7;
+  --accent: #d1725d;
+  --accent-soft: #faeee9;
 
   --positive: #178043;
   --live: #c02626;
@@ -75,19 +75,19 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #141210;
-  --surface: #1e1b18;
-  --surface-2: #282420;
-  --hover: #252220;
-  --border: #2e2a26;
-  --border-strong: #443e37;
+  --bg: #17140f;
+  --surface: #211d18;
+  --surface-2: #2b2720;
+  --hover: #272320;
+  --border: #322d27;
+  --border-strong: #48423a;
 
-  --ink: #ece7e1;
+  --ink: #e9e4dd;
   --ink-2: #b3aca3;
   --ink-3: #7b7369;
 
-  --accent: #e79a45;
-  --accent-soft: #33250f;
+  --accent: #e0a08d;
+  --accent-soft: #33211b;
 
   --positive: #4cc272;
   --live: #f27d72;
@@ -988,6 +988,12 @@ button {
   color: var(--live);
 }
 
+.track__note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
 .track__row {
   display: flex;
   align-items: center;
@@ -1332,6 +1338,7 @@ button {
 .fab.is-open .fab__action:nth-last-child(1) { transition-delay: 0ms; }
 .fab.is-open .fab__action:nth-last-child(2) { transition-delay: 50ms; }
 .fab.is-open .fab__action:nth-last-child(3) { transition-delay: 100ms; }
+.fab.is-open .fab__action:nth-last-child(4) { transition-delay: 150ms; }
 
 .fab__label {
   position: absolute;
@@ -1409,6 +1416,40 @@ button {
   margin: 0 0 12px;
   font-size: 12.5px;
   color: var(--ink-3);
+}
+
+/* First-run idea chips above the box — a running head start on what to ask. */
+.genie__ideas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+}
+
+.genie__ideas-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.genie__idea {
+  padding: 5px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.genie__idea:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .genie__input {
@@ -1666,6 +1707,783 @@ button {
   color: var(--ink-3);
 }
 
+/* ------------------------------------------------------------- onboarding
+   First-run setup (Onboarding.tsx): one quiet question per screen under the
+   dawn mark, which climbs the horizon as steps complete. */
+
+.onboard {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  background:
+    radial-gradient(
+      1000px 460px at 50% -100px,
+      color-mix(in srgb, var(--accent) 8%, var(--bg)),
+      var(--bg) 72%
+    )
+    fixed,
+    var(--bg);
+  display: flex;
+  justify-content: center;
+  animation: onboard-dawn 1200ms ease both;
+  transition: opacity 420ms ease;
+}
+
+.onboard.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes onboard-dawn {
+  from { opacity: 0; }
+}
+
+.onboard__inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 48px));
+  /* Seat the question in the upper-middle of the screen — a fixed offset, so
+     steps of different heights don't make the mark jump around. */
+  padding: clamp(40px, 16vh, 170px) 0 36px;
+}
+
+.setup__mark {
+  display: block;
+  border-radius: 11px;
+  margin-bottom: 26px;
+  flex: none;
+}
+
+/* Sun/moon flip pinned to the panel's top-right (onboarding + Personalize). */
+.setup__theme {
+  position: absolute;
+  top: clamp(40px, 16vh, 170px);
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.setup__theme:hover {
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+
+.setup__theme svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+}
+
+/* Each screen's children drift up in sequence — quiet, not showy. */
+.onboard__step > * {
+  animation: onboard-in 480ms cubic-bezier(0.22, 0.8, 0.36, 1) both;
+}
+
+.onboard__step > *:nth-child(2) { animation-delay: 60ms; }
+.onboard__step > *:nth-child(3) { animation-delay: 120ms; }
+.onboard__step > *:nth-child(4) { animation-delay: 180ms; }
+.onboard__step > *:nth-child(5) { animation-delay: 240ms; }
+.onboard__step > *:nth-child(n + 6) { animation-delay: 300ms; }
+
+@keyframes onboard-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+.onboard__overline {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 10px;
+}
+
+.onboard__title {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  margin: 0 0 10px;
+}
+
+.onboard__sub {
+  color: var(--ink-2);
+  font-size: 14.5px;
+  margin: 0 0 22px;
+  max-width: 46ch;
+}
+
+.onboard__input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 10px 13px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.onboard__input::placeholder { color: var(--ink-3); }
+
+.onboard__input:focus {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.onboard__input--lg {
+  font-size: 17px;
+  padding: 13px 16px;
+}
+
+.onboard__error {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--live);
+}
+
+/* Quiet footnote under the widget picker — the "generate anything else" hint. */
+.onboard__aside {
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* Widget picker tiles */
+
+.onboard__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.wtile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-3);
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.wtile:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-card);
+}
+
+.wtile.is-on {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface));
+  color: var(--ink);
+}
+
+.wtile__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: inherit;
+}
+
+.wtile.is-on .wtile__icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.wtile__icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+}
+
+.wtile__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.wtile__title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.wtile__desc {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.wtile__check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--surface);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 140ms ease, transform 140ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.wtile.is-on .wtile__check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.wtile__check svg {
+  width: 9px;
+  height: 9px;
+  stroke: currentColor;
+}
+
+/* Suggestion chips (topics, leagues, tickers) */
+
+.onboard__ideas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.pick {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.pick:hover {
+  border-color: var(--border-strong);
+}
+
+.pick.is-on {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.onboard__chipfield {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboard__addrow {
+  display: flex;
+  gap: 8px;
+}
+
+.onboard__add {
+  flex: none;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.onboard__add:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.onboard__add:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.onboard__field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+
+.onboard__select {
+  flex: 1;
+  max-width: 250px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+}
+
+/* Footer nav within a step */
+
+.onboard__row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 26px;
+}
+
+.onboard__spacer { flex: 1; }
+
+.onboard__next {
+  padding: 10px 24px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.onboard__next:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.onboard__next:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.onboard__back,
+.onboard__skip {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-3);
+  padding: 6px 4px;
+  transition: color 120ms ease;
+}
+
+.onboard__back:hover,
+.onboard__skip:hover {
+  color: var(--ink);
+}
+
+/* One continuous fill — steps can appear or vanish (picking fewer widgets)
+   without any visible notches jumping around. */
+.onboard__progress {
+  width: min(220px, 50%);
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border);
+  margin: auto auto 0;
+  overflow: hidden;
+}
+
+.onboard__progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 560ms cubic-bezier(0.22, 0.8, 0.36, 1);
+}
+
+/* ------------------------------------------------ personalize (settings) */
+
+.pz .pz__inner {
+  width: min(640px, calc(100vw - 48px));
+  padding-top: clamp(36px, 8vh, 80px);
+}
+
+.pz__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.pz__head .setup__mark {
+  margin-bottom: 0;
+}
+
+.pz__title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+/* The header owns the top row, so the theme flip sits in flow, not pinned. */
+.pz .setup__theme {
+  position: static;
+}
+
+.pz__close {
+  font-size: 24px;
+  line-height: 1;
+  color: var(--ink-3);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.pz__close:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+
+.pz__section {
+  margin-bottom: 26px;
+}
+
+.pz__section .onboard__overline {
+  margin-bottom: 12px;
+}
+
+.pz__hint {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  margin: -6px 0 12px;
+  max-width: 52ch;
+}
+
+.pz__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.pz__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+
+.pz__row {
+  position: sticky;
+  bottom: 0;
+  margin-top: 8px;
+  padding: 14px 0 18px;
+  background: linear-gradient(to top, var(--bg) 72%, transparent);
+}
+
+/* Generated-widget tiles: the whole body toggles on/off (check, top-right,
+   like the built-ins); the × in the opposite corner deletes for good. */
+.wtile--generated {
+  padding: 0;
+}
+
+.wtile__body {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 12px 40px 12px 14px;
+  min-width: 0;
+  border-radius: inherit;
+  color: inherit;
+}
+
+.wtile__delete {
+  position: absolute;
+  bottom: 7px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--ink-3);
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.wtile__delete:hover {
+  color: var(--live);
+  background: var(--live-soft);
+}
+
+@media (max-width: 560px) {
+  .onboard__inner { padding-top: 40px; }
+  .setup__theme { top: 40px; }
+  .setup__mark { margin-bottom: 20px; }
+  .onboard__grid { grid-template-columns: 1fr; }
+  .onboard__title { font-size: 28px; }
+  .pz__pair { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboard,
+  .onboard__step > *,
+  .onboard__progress-fill,
+  .wtile__check {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------ notes */
+
+.notes__area {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  border: none;
+  outline: none;
+  background: none;
+  padding: 2px 0;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.notes__area::placeholder {
+  color: var(--ink-3);
+}
+
+/* ------------------------------------------------------------------ focus */
+
+.focus {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0 2px;
+}
+
+.focus__modes {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.focus__mode {
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.focus__mode.is-active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-card);
+}
+
+.focus__dial {
+  position: relative;
+  width: 172px;
+  height: 172px;
+  display: grid;
+  place-items: center;
+}
+
+.focus__dial svg {
+  width: 100%;
+  height: 100%;
+}
+
+.focus__track {
+  fill: none;
+  stroke: var(--surface-2);
+  stroke-width: 7;
+}
+
+.focus__prog {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 300ms linear;
+}
+
+.focus__time {
+  position: absolute;
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.focus__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.focus__go {
+  padding: 8px 26px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+  transition: opacity 120ms ease;
+}
+
+.focus__go:hover {
+  opacity: 0.88;
+}
+
+.focus__reset {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-3);
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.focus__reset:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+
+.focus__count {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* --------------------------------------------------------------- podcasts */
+
+.pod-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pod {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 0;
+  border-radius: var(--radius-sm);
+}
+
+.pod:hover .pod__title {
+  color: var(--accent);
+}
+
+.pod__art {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.pod__art--blank {
+  display: block;
+}
+
+.pod__info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pod__title {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink);
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  transition: color 120ms ease;
+}
+
+.pod__meta {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.pod-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.pod-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  transition: background 120ms ease;
+}
+
+.pod-result:hover {
+  background: var(--hover);
+}
+
+.pod-result .pod__art {
+  width: 34px;
+  height: 34px;
+}
+
+.pod-result__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pod-result__add {
+  flex: none;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  padding-right: 4px;
+}
+
+.pod-result:hover .pod-result__add {
+  color: var(--accent);
+}
+
 /* ----------------------------------------------- responsive (wide) cards
    Each .board__item is a size container (see .board__item), so these react to
    the card's own width once it's resized to span 2-3 columns — filling the
@@ -1676,7 +2494,8 @@ button {
   .news__list,
   .stocks__list,
   .concert-list,
-  .match-list {
+  .match-list,
+  .pod-list {
     display: grid;
     grid-template-columns: 1fr 1fr;
     column-gap: 26px;
@@ -1709,6 +2528,7 @@ button {
   .stocks__list > *,
   .concert-list > *,
   .match-list > *,
+  .pod-list > *,
   .gw-root > .gw-row {
     min-width: 0;
   }
@@ -1718,9 +2538,179 @@ button {
   .news__list,
   .stocks__list,
   .concert-list,
+  .pod-list,
   .gw-root {
     grid-template-columns: repeat(3, 1fr);
   }
   /* Match rows carry a lot (date + teams + league pill), so keep them 2-up
      even at 3x where 3 columns would squeeze the team names. */
+}
+
+/* ----------------------------------------------------------- search widget
+   Unlike the dashboard cards, Search has no enclosing surface. Only the
+   control itself is drawn, so the page background remains visible around it. */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.search-widget {
+  width: 100%;
+  background: transparent;
+  container-type: inline-size;
+}
+
+.search-widget__bar {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.search-widget__bar:focus-within {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.search-widget__providers {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+}
+
+.search-widget__provider,
+.search-widget__submit {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  color: var(--ink-3);
+  transition: color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.search-widget__provider svg {
+  width: 17px;
+  height: 17px;
+}
+
+.search-widget__provider:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+
+.search-widget__provider.is-active {
+  background: var(--surface-2);
+}
+
+/* Only the active engine shows; the rest stay collapsed until the group is
+   hovered or focused, then fan out to the right of it. */
+.search-widget__provider.is-extra {
+  width: 0;
+  margin-left: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: scale(0.4);
+  pointer-events: none;
+  transition:
+    width 200ms cubic-bezier(0.22, 0.8, 0.36, 1),
+    margin 200ms cubic-bezier(0.22, 0.8, 0.36, 1),
+    opacity 150ms ease,
+    transform 200ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.search-widget__providers:hover .search-widget__provider.is-extra,
+.search-widget__providers:focus-within .search-widget__provider.is-extra {
+  width: 34px;
+  margin-left: 2px;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-widget__provider.is-extra {
+    transition: opacity 120ms ease;
+  }
+}
+
+.search-widget__provider.is-google.is-active { color: #4285f4; }
+.search-widget__provider.is-bing.is-active { color: #008373; }
+.search-widget__provider.is-perplexity.is-active { color: #20a4a6; }
+.search-widget__provider.is-chatgpt.is-active { color: var(--ink); }
+.search-widget__provider.is-claude.is-active { color: #d97757; }
+
+.search-widget__field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.search-widget__field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 7px 4px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.search-widget__field input::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+.search-widget__field input::-webkit-search-cancel-button {
+  opacity: 0.45;
+}
+
+.search-widget__submit {
+  margin-right: 2px;
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.search-widget__submit:hover {
+  transform: translateY(-1px);
+}
+
+.search-widget__submit svg {
+  width: 16px;
+  height: 16px;
+}
+
+@container (max-width: 520px) {
+  .search-widget__bar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    border-radius: var(--radius);
+  }
+
+  .search-widget__providers {
+    grid-column: 1 / -1;
+    justify-content: center;
+    padding-bottom: 0;
+  }
 }

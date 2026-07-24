@@ -1,111 +1,65 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
-import { getJSON, timeAgo, useFetched } from "../lib/api";
+import { timeAgo, useFetched } from "../lib/api";
 import { useSettings } from "../lib/settings";
 import { Card, EditButton, SkeletonRows } from "./Card";
 import { NewsIcon } from "./icons";
 
-type HNHit = {
-  objectID: string;
-  title: string;
-  url: string | null;
-  points: number;
-  created_at: string;
-};
-
-type ESPNArticle = {
-  headline: string;
-  published: string;
-  links: { web?: { href: string } };
-};
-
 export type Story = { id: string; title: string; url: string; meta: string };
 
+/**
+ * Headlines for a topic via Google News RSS — general-interest coverage of
+ * whatever the user follows (K-pop, cricket, gardening…), where our other
+ * source (Hacker News) only surfaces tech. The `query` supports Google's OR
+ * operator, matching how topic queries are stored (e.g. "AI OR LLM").
+ */
 export async function loadTopic(query: string): Promise<Story[]> {
-  const since = Math.floor(Date.now() / 1000) - 7 * 24 * 3600;
-  // Algolia matches all query words, so run each OR-term separately and merge.
-  const terms = query.split(" OR ");
-  const results = await Promise.allSettled(
-    terms.map((term) =>
-      getJSON<{ hits: HNHit[] }>(
-        `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(term)}` +
-          `&tags=story&numericFilters=created_at_i>${since}&hitsPerPage=30`,
-      ),
-    ),
+  const res = await fetch(
+    `/api/gnews/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`,
   );
-  const seen = new Map<string, HNHit>();
-  for (const r of results) {
-    if (r.status !== "fulfilled") continue;
-    for (const h of r.value.hits) seen.set(h.objectID, h);
-  }
-  const ranked = [...seen.values()].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
-  return ranked.slice(0, 6).map((h) => {
-    let domain = "news.ycombinator.com";
-    try {
-      if (h.url) domain = new URL(h.url).hostname.replace(/^www\./, "");
-    } catch {
-      /* keep default */
-    }
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const xml = new DOMParser().parseFromString(await res.text(), "application/xml");
+  if (xml.querySelector("parsererror")) throw new Error("Couldn't read the news feed.");
+
+  return [...xml.querySelectorAll("item")].slice(0, 6).map((item, i) => {
+    const rawTitle = item.querySelector("title")?.textContent ?? "";
+    const source = item.querySelector("source")?.textContent ?? "";
+    // Google News titles read "Headline - Source"; drop the redundant suffix.
+    const title =
+      source && rawTitle.endsWith(` - ${source}`)
+        ? rawTitle.slice(0, -(source.length + 3))
+        : rawTitle;
+    const pubDate = item.querySelector("pubDate")?.textContent;
     return {
-      id: h.objectID,
-      title: h.title,
-      url: h.url ?? `https://news.ycombinator.com/item?id=${h.objectID}`,
-      meta: `${domain} · ${h.points} points · ${timeAgo(h.created_at)}`,
+      id: item.querySelector("guid")?.textContent || String(i),
+      title,
+      url: item.querySelector("link")?.textContent ?? "",
+      meta: [source, pubDate ? timeAgo(pubDate) : null].filter(Boolean).join(" · "),
     };
   });
 }
 
-async function loadTeamNews(espnId: string): Promise<Story[]> {
-  const data = await getJSON<{ articles: ESPNArticle[] }>(
-    `/api/espn/apis/site/v2/sports/basketball/nba/news?team=${espnId}&limit=6`,
-  );
-  return data.articles.slice(0, 6).map((a, i) => ({
-    id: String(i),
-    title: a.headline,
-    url: a.links.web?.href ?? "https://www.espn.com/nba/",
-    meta: `ESPN · ${timeAgo(a.published)}`,
-  }));
-}
-
-type NBATeam = { id: string; name: string };
-
-async function loadNBATeams(): Promise<NBATeam[]> {
-  const data = await getJSON<{
-    sports: { leagues: { teams: { team: { id: string; displayName: string } }[] }[] }[];
-  }>(`/api/espn/apis/site/v2/sports/basketball/nba/teams`);
-  return (data.sports[0]?.leagues[0]?.teams ?? [])
-    .map((t) => ({ id: t.team.id, name: t.team.displayName }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
 export function News() {
   const { settings, update } = useSettings();
-  const tabs = [
-    ...settings.topics.map((t) => ({ id: t.id, label: t.label, load: () => loadTopic(t.query) })),
-    {
-      id: "team",
-      label: settings.nbaTeam.name,
-      load: () => loadTeamNews(settings.nbaTeam.espnId),
-    },
-  ];
+  // Every tab is a topic now. Following a team is just a topic like "Golden
+  // State Warriors" — Google News (see loadTopic) covers team coverage too, so
+  // there's no separate, sport-specific "team news" concept baked in.
+  const tabs = settings.topics.map((t) => ({ id: t.id, label: t.label, query: t.query }));
 
-  const [active, setActive] = useState(tabs[0]?.id);
+  const [active, setActive] = useState<string | undefined>(tabs[0]?.id);
   const tab = tabs.find((t) => t.id === active) ?? tabs[0];
 
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState("");
   const [terms, setTerms] = useState("");
-  const [teams, setTeams] = useState<NBATeam[] | null>(null);
 
-  // Refresh the visible tab every 15 minutes.
-  const state = useFetched(tab.load, [tab.id, settings.nbaTeam.espnId], 15 * 60 * 1000);
-
-  // Only fetch the NBA team list once someone opens edit mode.
-  useEffect(() => {
-    if (editing && teams === null) {
-      loadNBATeams().then(setTeams, () => setTeams([]));
-    }
-  }, [editing, teams]);
+  // Refresh the visible tab every 15 minutes. `tab` is undefined once every
+  // topic has been removed — nothing to fetch then.
+  const state = useFetched(
+    () => (tab ? loadTopic(tab.query) : Promise.resolve([])),
+    [tab?.id],
+    15 * 60 * 1000,
+  );
 
   const addTopic = (e: FormEvent) => {
     e.preventDefault();
@@ -124,7 +78,7 @@ export function News() {
 
   const removeTopic = (id: string) => {
     update({ topics: settings.topics.filter((t) => t.id !== id) });
-    if (active === id) setActive("team");
+    if (active === id) setActive(tabs.find((t) => t.id !== id)?.id);
   };
 
   return (
@@ -184,24 +138,9 @@ export function News() {
               Add
             </button>
           </form>
-          <label className="track__row">
-            Team news
-            <select
-              value={settings.nbaTeam.espnId}
-              onChange={(e) => {
-                const team = teams?.find((t) => t.id === e.target.value);
-                if (team) update({ nbaTeam: { espnId: team.id, name: team.name.split(" ").pop()! } });
-              }}
-            >
-              {teams === null && <option>Loading teams…</option>}
-              {teams?.length === 0 && <option>Couldn't load teams</option>}
-              {teams?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <p className="track__note">
+            Follow anything — a subject, a team, a place. Each becomes a tab of headlines.
+          </p>
         </div>
       ) : (
         <>
@@ -209,7 +148,10 @@ export function News() {
           {state.status === "error" && <div className="empty">Couldn't load stories.</div>}
           {state.status === "ready" && (
             <div className="news__list">
-              {state.data.length === 0 && (
+              {tabs.length === 0 && (
+                <div className="empty">Add topics to follow from the Edit button.</div>
+              )}
+              {tabs.length > 0 && state.data.length === 0 && (
                 <div className="empty">Nothing new in the last few days.</div>
               )}
               {state.data.map((s) => (

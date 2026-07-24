@@ -9,8 +9,12 @@ import { useQuotes } from "./Stocks";
 import { loadTopic } from "./News";
 import { Todos } from "./Todos";
 import { ReadingQueue } from "./ReadingQueue";
+import { Notes } from "./Notes";
+import { FocusTimer } from "./FocusTimer";
+import { EpisodeRow, useLatestEpisodes } from "./Podcasts";
 import { useCustomWidgets } from "../lib/customWidgets";
 import { CustomWidgetCard } from "./CustomWidget";
+import { SearchWidget } from "./SearchWidget";
 
 /**
  * The "Flow" layout: one narrow column that reads top to bottom, ordered by
@@ -39,12 +43,18 @@ function Section({ label, children }: { label: ReactNode; children: ReactNode })
 export function FlowPage() {
   const { settings } = useSettings();
   const { widgets } = useCustomWidgets();
+  // Widgets left off during onboarding stay out of the flow as well — their
+  // hooks get empty inputs so nothing is fetched on their behalf. Football is
+  // opt-in (lib/board): it only appears for boards that actually carry it.
+  const hidden = new Set(settings.hidden);
+  const onBoard = new Set(settings.board.flat());
   const weather = useWeather(settings.location.latitude, settings.location.longitude);
-  const matches = useMatches(settings.soccerLeagues);
+  const matches = useMatches(onBoard.has("football") ? settings.soccerLeagues : []);
   const shows = useUpcomingShows(settings.concertRadiusMiles);
-  const quotes = useQuotes(settings.stocks);
+  const quotes = useQuotes(hidden.has("stocks") ? [] : settings.stocks);
+  const episodes = useLatestEpisodes();
 
-  const topic = settings.topics[0];
+  const topic = hidden.has("news") ? undefined : settings.topics[0];
   const news = useFetched(
     () => (topic ? loadTopic(topic.query) : Promise.resolve([])),
     [topic?.id],
@@ -63,7 +73,7 @@ export function FlowPage() {
   const fixtures = (today.length > 0 ? today : upcoming).slice(0, 4);
 
   const lede =
-    weather.status === "ready" ? (
+    !hidden.has("weather") && weather.status === "ready" ? (
       <p className="flow__lede">
         It's <b>{Math.round(weather.data.current.temperature_2m)}°</b> and{" "}
         {wmo(weather.data.current.weather_code).label.toLowerCase()} in {settings.location.label}.
@@ -103,6 +113,29 @@ export function FlowPage() {
   }
 
   sections.push({ key: "todos", weight: openTodos > 0 ? 1 : 6, node: <Todos />, compact: true });
+
+  if (!hidden.has("focus")) {
+    sections.push({ key: "focus", weight: 2.5, node: <FocusTimer />, compact: true });
+  }
+
+  if (!hidden.has("notes")) {
+    sections.push({ key: "notes", weight: 4.5, node: <Notes />, compact: true });
+  }
+
+  if (!hidden.has("podcasts") && episodes.status === "ready" && episodes.data.length > 0) {
+    sections.push({
+      key: "podcasts",
+      weight: 6.5,
+      compact: true,
+      node: (
+        <Section label="New episodes">
+          {episodes.data.slice(0, 3).map((e) => (
+            <EpisodeRow episode={e} key={e.id} />
+          ))}
+        </Section>
+      ),
+    });
+  }
 
   if (fixtures.length > 0) {
     sections.push({
@@ -145,7 +178,7 @@ export function FlowPage() {
     });
   }
 
-  if (shows.status === "ready" && shows.data.length > 0) {
+  if (!hidden.has("shows") && shows.status === "ready" && shows.data.length > 0) {
     sections.push({
       key: "shows",
       weight: 5.5,
@@ -194,7 +227,8 @@ export function FlowPage() {
 
   // Generated widgets read as compact sections between markets and the
   // forecast — the flow CSS strips their card chrome like everything else.
-  for (const widget of widgets) {
+  // Hidden ones (switched off in Personalize) stay out.
+  for (const widget of widgets.filter((w) => !hidden.has(w.id))) {
     sections.push({
       key: widget.id,
       weight: 8.5,
@@ -203,7 +237,7 @@ export function FlowPage() {
     });
   }
 
-  if (weather.status === "ready") {
+  if (!hidden.has("weather") && weather.status === "ready") {
     sections.push({
       key: "forecast",
       weight: 9,
@@ -233,6 +267,7 @@ export function FlowPage() {
 
   return (
     <main className="flow">
+      <SearchWidget />
       {lede}
       {rows.map((r) =>
         r.nodes.length === 2 ? (
