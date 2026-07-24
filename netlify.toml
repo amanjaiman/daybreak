@@ -31,6 +31,13 @@
   status = 200
   force = true
 
+# iTunes Search API — podcast lookup + recent episodes (JSON, no key, no CORS).
+[[redirects]]
+  from = "/api/itunes/*"
+  to = "https://itunes.apple.com/:splat"
+  status = 200
+  force = true
+
 # Reading-queue link enrichment (title + favicon) — see netlify/functions/unfurl.ts.
 [[redirects]]
   from = "/api/unfurl"

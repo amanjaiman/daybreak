@@ -266,6 +266,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/gnews/, ''),
         },
+        // iTunes Search API — podcast search + episodes (JSON, no CORS).
+        '/api/itunes': {
+          target: 'https://itunes.apple.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/itunes/, ''),
+        },
       },
     },
   }

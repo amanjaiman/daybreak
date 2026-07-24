@@ -3,7 +3,18 @@
 // moves. Kept dependency-free so both settings.tsx (load-time validation)
 // and Board.tsx (drag logic) can import it without a circular reference.
 
-export type CardId = "search" | "weather" | "todos" | "reading" | "news" | "football" | "shows" | "stocks";
+export type CardId =
+  | "search"
+  | "weather"
+  | "todos"
+  | "reading"
+  | "news"
+  | "football"
+  | "shows"
+  | "stocks"
+  | "notes"
+  | "focus"
+  | "podcasts";
 
 // User-generated widgets (see lib/customWidgets.tsx) live on the board next
 // to the built-in cards, keyed by a "custom:" prefix so the two id spaces
@@ -13,7 +24,19 @@ export type BoardId = CardId | CustomId;
 
 export const isCustomId = (id: string): id is CustomId => id.startsWith("custom:");
 
-export const CARD_IDS: CardId[] = ["search", "weather", "todos", "reading", "news", "football", "shows", "stocks"];
+export const CARD_IDS: CardId[] = [
+  "search",
+  "weather",
+  "todos",
+  "reading",
+  "news",
+  "football",
+  "shows",
+  "stocks",
+  "notes",
+  "focus",
+  "podcasts",
+];
 
 // How many of the (up to 3) columns a card spans on the grid. A card anchored
 // in column c can be at most 3 - c wide (column 2 is always width 1), so its

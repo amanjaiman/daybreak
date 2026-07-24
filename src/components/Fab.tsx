@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { useSettings } from "../lib/settings";
 import { useCustomWidgets } from "../lib/customWidgets";
 import { startGeneration } from "../lib/generateJob";
-import { FlowIcon, GridIcon, LockIcon, MoonIcon, SlidersIcon, SparkleIcon, SunIcon, UnlockIcon } from "./icons";
+import { FlowIcon, GridIcon, LockIcon, MoonIcon, SlidersIcon, SunIcon, UnlockIcon } from "./icons";
 
 // The favicon's dawn mark, drawn with theme tokens so the bubble follows
 // light/dark mode: dark disc with light strokes in light mode, and the
@@ -68,10 +68,7 @@ function GenerateDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="genie" role="dialog" aria-modal="true" aria-label="Generate a widget">
       <form onSubmit={submit}>
-        <h2 className="genie__title">
-          <SparkleIcon />
-          Generate a widget
-        </h2>
+        <h2 className="genie__title">Generate a widget</h2>
         <p className="genie__hint">
           Describe what you want to keep an eye on — it's built to match Daybreak and added to your board.
         </p>

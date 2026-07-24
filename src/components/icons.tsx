@@ -130,6 +130,27 @@ export const GripIcon = () => (
   </svg>
 );
 
+export const NoteIcon = () => (
+  <svg {...base}>
+    <path d="M5 4h14v11l-5 5H5V4Z" />
+    <path d="M14 20v-5h5M8.5 9h7M8.5 13h4" />
+  </svg>
+);
+
+export const TimerIcon = () => (
+  <svg {...base}>
+    <circle cx="12" cy="13.5" r="7.5" />
+    <path d="M12 13.5V9M9.5 2.5h5M18.5 6.5l1.5-1.5" />
+  </svg>
+);
+
+export const MicIcon = () => (
+  <svg {...base}>
+    <rect x="9" y="3" width="6" height="10" rx="3" />
+    <path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" />
+  </svg>
+);
+
 export const MagnifierIcon = () => (
   <svg {...base}>
     <circle cx="11" cy="11" r="6.5" />

@@ -94,8 +94,8 @@ export default function App() {
       {flow ? <FlowPage /> : <Board />}
 
       <footer className="footer">
-        Weather by Open-Meteo · News via Hacker News &amp; ESPN · Concerts via Bandsintown ·
-        Quotes via Yahoo Finance
+        Weather by Open-Meteo · News via Google News · Concerts via Bandsintown · Quotes via Yahoo
+        Finance · Podcasts via Apple
       </footer>
 
       <Fab onPersonalize={() => setPersonalizing(true)} />

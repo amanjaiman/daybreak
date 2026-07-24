@@ -9,6 +9,9 @@ import { useQuotes } from "./Stocks";
 import { loadTopic } from "./News";
 import { Todos } from "./Todos";
 import { ReadingQueue } from "./ReadingQueue";
+import { Notes } from "./Notes";
+import { FocusTimer } from "./FocusTimer";
+import { EpisodeRow, useLatestEpisodes } from "./Podcasts";
 import { useCustomWidgets } from "../lib/customWidgets";
 import { CustomWidgetCard } from "./CustomWidget";
 import { SearchWidget } from "./SearchWidget";
@@ -49,6 +52,7 @@ export function FlowPage() {
   const matches = useMatches(onBoard.has("football") ? settings.soccerLeagues : []);
   const shows = useUpcomingShows(settings.concertRadiusMiles);
   const quotes = useQuotes(hidden.has("stocks") ? [] : settings.stocks);
+  const episodes = useLatestEpisodes();
 
   const topic = hidden.has("news") ? undefined : settings.topics[0];
   const news = useFetched(
@@ -109,6 +113,29 @@ export function FlowPage() {
   }
 
   sections.push({ key: "todos", weight: openTodos > 0 ? 1 : 6, node: <Todos />, compact: true });
+
+  if (!hidden.has("focus")) {
+    sections.push({ key: "focus", weight: 2.5, node: <FocusTimer />, compact: true });
+  }
+
+  if (!hidden.has("notes")) {
+    sections.push({ key: "notes", weight: 4.5, node: <Notes />, compact: true });
+  }
+
+  if (!hidden.has("podcasts") && episodes.status === "ready" && episodes.data.length > 0) {
+    sections.push({
+      key: "podcasts",
+      weight: 6.5,
+      compact: true,
+      node: (
+        <Section label="New episodes">
+          {episodes.data.slice(0, 3).map((e) => (
+            <EpisodeRow episode={e} key={e.id} />
+          ))}
+        </Section>
+      ),
+    });
+  }
 
   if (fixtures.length > 0) {
     sections.push({

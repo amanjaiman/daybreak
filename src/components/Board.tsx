@@ -15,6 +15,9 @@ import { Shows } from "./Shows";
 import { Stocks } from "./Stocks";
 import { ReadingQueue } from "./ReadingQueue";
 import { SearchWidget } from "./SearchWidget";
+import { Notes } from "./Notes";
+import { FocusTimer } from "./FocusTimer";
+import { Podcasts } from "./Podcasts";
 import { GripIcon } from "./icons";
 
 // Record<CardId, …> means TypeScript won't compile if a card is added to
@@ -29,6 +32,9 @@ const CARDS: Record<CardId, ReactNode> = {
   football: <Soccer />,
   shows: <Shows />,
   stocks: <Stocks />,
+  notes: <Notes />,
+  focus: <FocusTimer />,
+  podcasts: <Podcasts />,
 };
 
 const TITLES: Record<CardId, string> = {
@@ -40,6 +46,9 @@ const TITLES: Record<CardId, string> = {
   football: "Football",
   shows: "Shows",
   stocks: "Stocks",
+  notes: "Notes",
+  focus: "Focus",
+  podcasts: "Podcasts",
 };
 
 type DropTarget = { col: number; index: number };

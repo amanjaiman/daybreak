@@ -5,7 +5,7 @@ import { balanceBoard, normalizeBoard, normalizeSpans } from "../lib/board";
 import type { BoardId, CardId } from "../lib/board";
 import { TRACKED_KEY } from "./Shows";
 import type { Tracked } from "./Shows";
-import { BallIcon, ChartIcon, MoonIcon, NewsIcon, SunIcon, TicketIcon } from "./icons";
+import { BallIcon, ChartIcon, MicIcon, MoonIcon, NewsIcon, NoteIcon, SunIcon, TicketIcon, TimerIcon } from "./icons";
 
 /**
  * Pieces shared by first-run setup (Onboarding.tsx) and the settings panel
@@ -25,6 +25,9 @@ export const WIDGET_CATALOG: WidgetInfo[] = [
   { id: "news", icon: <NewsIcon />, title: "News", desc: "Headlines for topics you follow" },
   { id: "shows", icon: <TicketIcon />, title: "Shows", desc: "Concerts near your city" },
   { id: "stocks", icon: <ChartIcon />, title: "Stocks", desc: "Your watchlist at a glance" },
+  { id: "notes", icon: <NoteIcon />, title: "Notes", desc: "A scratchpad that's always there" },
+  { id: "focus", icon: <TimerIcon />, title: "Focus", desc: "A Pomodoro timer for deep work" },
+  { id: "podcasts", icon: <MicIcon />, title: "Podcasts", desc: "New episodes from shows you follow" },
 ];
 
 // Football is a single-sport widget: a personal interest, not a universal
