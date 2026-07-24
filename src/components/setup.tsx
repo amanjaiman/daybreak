@@ -13,14 +13,25 @@ import { BallIcon, ChartIcon, MoonIcon, NewsIcon, SunIcon, TicketIcon } from "./
  * and the one place that turns a draft of choices into saved settings.
  */
 
-// The optional built-ins. Search, Todos and Reading are ALWAYS_ON (lib/board)
-// and never offered as choices.
-export const WIDGET_CATALOG: { id: CardId; icon: ReactNode; title: string; desc: string }[] = [
+export type WidgetInfo = { id: CardId; icon: ReactNode; title: string; desc: string };
+
+// Universal built-ins — general frameworks anyone can use and tune to their
+// own taste. These are what onboarding offers and Personalize toggles. Search,
+// Todos and Reading are ALWAYS_ON (lib/board) so they aren't listed here.
+// Specific interests (a particular sport, a particular team) are deliberately
+// NOT built-ins — they belong to News topics or a generated widget.
+export const WIDGET_CATALOG: WidgetInfo[] = [
   { id: "weather", icon: <SunIcon />, title: "Weather", desc: "Right now, plus the week ahead" },
   { id: "news", icon: <NewsIcon />, title: "News", desc: "Headlines for topics you follow" },
-  { id: "football", icon: <BallIcon />, title: "Football", desc: "Fixtures and live scores" },
   { id: "shows", icon: <TicketIcon />, title: "Shows", desc: "Concerts near your city" },
   { id: "stocks", icon: <ChartIcon />, title: "Stocks", desc: "Your watchlist at a glance" },
+];
+
+// Football is a single-sport widget: a personal interest, not a universal
+// framework, so it isn't offered to new users. It stays here only so a board
+// that already has it (or hides it) can still manage it from Personalize.
+export const LEGACY_WIDGETS: WidgetInfo[] = [
+  { id: "football", icon: <BallIcon />, title: "Football", desc: "Fixtures and live scores" },
 ];
 
 // Gentle starting points — tapping one adds it, nothing is preselected.
@@ -144,7 +155,6 @@ export type SetupDraft = {
   name: string;
   location: { label: string; latitude: number; longitude: number };
   topics: Topic[];
-  nbaTeam: Settings["nbaTeam"];
   leagues: League[];
   stocks: string[];
   artists: string[];
@@ -186,7 +196,6 @@ export function applySetup(
     name: draft.name.trim(),
     location: draft.location,
     topics: draft.topics,
-    nbaTeam: draft.nbaTeam,
     soccerLeagues: draft.leagues,
     stocks: draft.stocks,
     hidden: draft.hidden,

@@ -41,10 +41,12 @@ export function FlowPage() {
   const { settings } = useSettings();
   const { widgets } = useCustomWidgets();
   // Widgets left off during onboarding stay out of the flow as well — their
-  // hooks get empty inputs so nothing is fetched on their behalf.
+  // hooks get empty inputs so nothing is fetched on their behalf. Football is
+  // opt-in (lib/board): it only appears for boards that actually carry it.
   const hidden = new Set(settings.hidden);
+  const onBoard = new Set(settings.board.flat());
   const weather = useWeather(settings.location.latitude, settings.location.longitude);
-  const matches = useMatches(hidden.has("football") ? [] : settings.soccerLeagues);
+  const matches = useMatches(onBoard.has("football") ? settings.soccerLeagues : []);
   const shows = useUpcomingShows(settings.concertRadiusMiles);
   const quotes = useQuotes(hidden.has("stocks") ? [] : settings.stocks);
 

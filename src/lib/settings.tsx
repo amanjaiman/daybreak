@@ -27,8 +27,6 @@ export type Settings = {
   spans: Spans;
   location: { label: string; latitude: number; longitude: number };
   topics: Topic[];
-  /** Team tab on the News card; null hides the tab. */
-  nbaTeam: { espnId: string; name: string } | null;
   stocks: string[];
   soccerLeagues: League[];
   concertRadiusMiles: number;
@@ -48,7 +46,6 @@ const defaults: Settings = {
   spans: DEFAULT_SPANS,
   location: config.location,
   topics: config.topics,
-  nbaTeam: { espnId: config.nbaTeam.espnId, name: config.nbaTeam.name },
   stocks: config.stocks,
   soccerLeagues: config.soccerLeagues,
   concertRadiusMiles: config.concertRadiusMiles,
@@ -78,6 +75,17 @@ function load(): Settings {
     const merged = raw
       ? { ...defaults, onboarded: true, ...(JSON.parse(raw) as Partial<Settings>) }
       : defaults;
+    // Legacy: a saved NBA "team news" tab becomes an ordinary News topic, now
+    // that topics pull from Google News (which covers team coverage too). Then
+    // the sport-specific field is dropped so it isn't re-saved.
+    const legacyTeam = (merged as { nbaTeam?: { name?: string } }).nbaTeam;
+    if (legacyTeam?.name && !merged.topics.some((t) => t.label === legacyTeam.name)) {
+      merged.topics = [
+        ...merged.topics,
+        { id: crypto.randomUUID(), label: legacyTeam.name, query: legacyTeam.name },
+      ];
+    }
+    delete (merged as { nbaTeam?: unknown }).nbaTeam;
     const customIds = storedCustomIds();
     const hidden = (Array.isArray(merged.hidden) ? merged.hidden : []).filter(
       (id): id is BoardId =>

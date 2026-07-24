@@ -50,7 +50,7 @@ export function normalizeSpans(spans: unknown, columns: BoardId[][]): Spans {
 export const DEFAULT_BOARD: BoardId[][] = [
   ["search", "weather", "todos", "reading"],
   ["news"],
-  ["football", "shows", "stocks"],
+  ["shows", "stocks"],
 ];
 
 export const DEFAULT_SPANS: Spans = { search: 3 };
@@ -59,13 +59,20 @@ export const DEFAULT_SPANS: Spans = { search: 3 };
 // as choices during onboarding or in Personalize.
 export const ALWAYS_ON: CardId[] = ["search", "todos", "reading"];
 
+// Opt-in cards render if a board already has them, but are never auto-added.
+// Football is a single-sport widget (a personal interest, not a universal
+// framework), so new users don't get it — they'd generate a sport widget
+// instead. Legacy boards that already have it keep it.
+export const OPT_IN: CardId[] = ["football"];
+
 /**
  * Guarantee every known card appears exactly once, tolerating settings saved
  * by an older or newer build. `customIds` is the set of generated widgets
  * that currently exist — board entries pointing at deleted widgets are
  * dropped, and widgets missing from the board are slotted in. Cards in
  * `hidden` (built-in or generated, left off via onboarding/Personalize) are
- * dropped and stay off; ALWAYS_ON cards can't be hidden.
+ * dropped and stay off; ALWAYS_ON cards can't be hidden; OPT_IN cards are
+ * kept if present but never auto-added.
  */
 export function normalizeBoard(
   board: unknown,
@@ -73,11 +80,18 @@ export function normalizeBoard(
   hidden: BoardId[] = [],
 ): BoardId[][] {
   const off = new Set<BoardId>(hidden.filter((id) => !ALWAYS_ON.includes(id as CardId)));
-  const shown = [
+  // Cards allowed to stay on the board if already there (everything known and
+  // not hidden — including opt-in cards like football).
+  const known = new Set<string>([
     ...CARD_IDS.filter((id) => !off.has(id)),
     ...customIds.filter((id) => !off.has(id)),
+  ]);
+  // Cards to slot in when missing — excludes opt-in cards, which only appear
+  // for boards that already carry them.
+  const autoAdd = [
+    ...CARD_IDS.filter((id) => !off.has(id) && !OPT_IN.includes(id)),
+    ...customIds.filter((id) => !off.has(id)),
   ];
-  const known = new Set<string>(shown);
   const raw = Array.isArray(board) ? (board as unknown[]) : DEFAULT_BOARD;
   const cols: BoardId[][] = [0, 1, 2].map((i) =>
     Array.isArray(raw[i])
@@ -94,7 +108,7 @@ export function normalizeBoard(
     present.add("search");
   }
 
-  for (const id of shown) {
+  for (const id of autoAdd) {
     if (present.has(id)) continue;
     cols.reduce((shortest, c) => (c.length < shortest.length ? c : shortest)).push(id);
   }

@@ -1,15 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
-import { getJSON, timeAgo, useFetched } from "../lib/api";
+import { timeAgo, useFetched } from "../lib/api";
 import { useSettings } from "../lib/settings";
 import { Card, EditButton, SkeletonRows } from "./Card";
 import { NewsIcon } from "./icons";
-
-type ESPNArticle = {
-  headline: string;
-  published: string;
-  links: { web?: { href: string } };
-};
 
 export type Story = { id: string; title: string; url: string; meta: string };
 
@@ -45,43 +39,12 @@ export async function loadTopic(query: string): Promise<Story[]> {
   });
 }
 
-async function loadTeamNews(espnId: string): Promise<Story[]> {
-  const data = await getJSON<{ articles: ESPNArticle[] }>(
-    `/api/espn/apis/site/v2/sports/basketball/nba/news?team=${espnId}&limit=6`,
-  );
-  return data.articles.slice(0, 6).map((a, i) => ({
-    id: String(i),
-    title: a.headline,
-    url: a.links.web?.href ?? "https://www.espn.com/nba/",
-    meta: `ESPN · ${timeAgo(a.published)}`,
-  }));
-}
-
-export type NBATeam = { id: string; name: string };
-
-export async function loadNBATeams(): Promise<NBATeam[]> {
-  const data = await getJSON<{
-    sports: { leagues: { teams: { team: { id: string; displayName: string } }[] }[] }[];
-  }>(`/api/espn/apis/site/v2/sports/basketball/nba/teams`);
-  return (data.sports[0]?.leagues[0]?.teams ?? [])
-    .map((t) => ({ id: t.team.id, name: t.team.displayName }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
 export function News() {
   const { settings, update } = useSettings();
-  const tabs = [
-    ...settings.topics.map((t) => ({ id: t.id, label: t.label, load: () => loadTopic(t.query) })),
-    ...(settings.nbaTeam
-      ? [
-          {
-            id: "team",
-            label: settings.nbaTeam.name,
-            load: () => loadTeamNews(settings.nbaTeam!.espnId),
-          },
-        ]
-      : []),
-  ];
+  // Every tab is a topic now. Following a team is just a topic like "Golden
+  // State Warriors" — Google News (see loadTopic) covers team coverage too, so
+  // there's no separate, sport-specific "team news" concept baked in.
+  const tabs = settings.topics.map((t) => ({ id: t.id, label: t.label, query: t.query }));
 
   const [active, setActive] = useState<string | undefined>(tabs[0]?.id);
   const tab = tabs.find((t) => t.id === active) ?? tabs[0];
@@ -89,22 +52,14 @@ export function News() {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState("");
   const [terms, setTerms] = useState("");
-  const [teams, setTeams] = useState<NBATeam[] | null>(null);
 
-  // Refresh the visible tab every 15 minutes. `tab` is undefined when every
-  // topic (and the team tab) has been removed — nothing to fetch then.
+  // Refresh the visible tab every 15 minutes. `tab` is undefined once every
+  // topic has been removed — nothing to fetch then.
   const state = useFetched(
-    () => (tab ? tab.load() : Promise.resolve([])),
-    [tab?.id, settings.nbaTeam?.espnId],
+    () => (tab ? loadTopic(tab.query) : Promise.resolve([])),
+    [tab?.id],
     15 * 60 * 1000,
   );
-
-  // Only fetch the NBA team list once someone opens edit mode.
-  useEffect(() => {
-    if (editing && teams === null) {
-      loadNBATeams().then(setTeams, () => setTeams([]));
-    }
-  }, [editing, teams]);
 
   const addTopic = (e: FormEvent) => {
     e.preventDefault();
@@ -183,32 +138,9 @@ export function News() {
               Add
             </button>
           </form>
-          <label className="track__row">
-            Team news
-            <select
-              value={settings.nbaTeam?.espnId ?? ""}
-              onChange={(e) => {
-                if (!e.target.value) {
-                  update({ nbaTeam: null });
-                  if (active === "team") setActive(tabs.find((t) => t.id !== "team")?.id);
-                  return;
-                }
-                const team = teams?.find((t) => t.id === e.target.value);
-                if (team) update({ nbaTeam: { espnId: team.id, name: team.name.split(" ").pop()! } });
-              }}
-            >
-              <option value="">No team tab</option>
-              {teams === null && settings.nbaTeam && (
-                <option value={settings.nbaTeam.espnId}>{settings.nbaTeam.name}</option>
-              )}
-              {teams?.length === 0 && <option disabled>Couldn't load teams</option>}
-              {teams?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <p className="track__note">
+            Follow anything — a subject, a team, a place. Each becomes a tab of headlines.
+          </p>
         </div>
       ) : (
         <>

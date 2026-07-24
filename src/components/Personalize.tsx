@@ -10,6 +10,7 @@ import { WidgetIcon } from "./widgetIcons";
 import { CheckIcon } from "./icons";
 import {
   DaybreakMark,
+  LEGACY_WIDGETS,
   PillPicker,
   STOCK_IDEAS,
   ThemeToggle,
@@ -59,7 +60,6 @@ export function Personalize({ onClose }: { onClose: () => void }) {
         name: name.trim() || settings.name,
         location,
         topics,
-        nbaTeam: settings.nbaTeam,
         leagues,
         stocks,
         artists,
@@ -98,7 +98,15 @@ export function Personalize({ onClose }: { onClose: () => void }) {
   ];
 
   const generated = widgets.filter((w) => w.status === "ready");
-  const showConfig = (id: BoardId) => !hidden.has(id);
+
+  // Football is opt-in (lib/board): offer it here only to users who already
+  // have it on their board or have hidden it — never to fresh users.
+  const onBoard = new Set(settings.board.flat());
+  const legacyOwned = LEGACY_WIDGETS.filter((w) => onBoard.has(w.id) || hidden.has(w.id));
+  const builtinTiles = [...WIDGET_CATALOG, ...legacyOwned];
+  const owns = (id: BoardId) =>
+    WIDGET_CATALOG.some((w) => w.id === id) || legacyOwned.some((w) => w.id === id);
+  const showConfig = (id: BoardId) => owns(id) && !hidden.has(id);
 
   return (
     <div className="onboard pz" role="dialog" aria-modal="true" aria-label="Personalize Daybreak">
@@ -145,7 +153,7 @@ export function Personalize({ onClose }: { onClose: () => void }) {
             keep their data and can come back any time.
           </p>
           <div className="onboard__grid">
-            {WIDGET_CATALOG.map((w) => {
+            {builtinTiles.map((w) => {
               const on = !hidden.has(w.id);
               return (
                 <button

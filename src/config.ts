@@ -15,9 +15,6 @@ export const config = {
     { id: "ai", label: "AI", query: "AI OR LLM OR Anthropic OR OpenAI" },
   ],
 
-  // NBA team for the sports card (ESPN team abbreviation).
-  nbaTeam: { abbrev: "gs", name: "Warriors", espnId: "9" },
-
   // Initial performers for the Shows card (Bandsintown names). Only used to
   // seed the list on first run — after that, manage it from the card's Edit
   // button; changes are kept in localStorage.

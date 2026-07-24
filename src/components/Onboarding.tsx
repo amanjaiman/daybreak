@@ -2,14 +2,12 @@ import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { geocode } from "../lib/api";
 import { useSettings } from "../lib/settings";
-import type { League, Topic } from "../lib/settings";
+import type { Topic } from "../lib/settings";
 import type { CardId } from "../lib/board";
-import { LEAGUE_CATALOG } from "./Soccer";
 import { CheckIcon } from "./icons";
 import {
   DaybreakMark,
   PillPicker,
-  STARTER_LEAGUES,
   STOCK_IDEAS,
   ThemeToggle,
   TOPIC_IDEAS,
@@ -25,7 +23,7 @@ import {
  * here is editable later from each card or the Personalize panel.
  */
 
-type StepId = "welcome" | "location" | "widgets" | "news" | "football" | "shows" | "stocks" | "done";
+type StepId = "welcome" | "location" | "widgets" | "news" | "shows" | "stocks" | "done";
 
 // Every stage the flow can pass through, in order. The progress bar measures
 // against this fixed list so picking fewer widgets can't rewind it.
@@ -34,7 +32,6 @@ const STAGE_ORDER: StepId[] = [
   "location",
   "widgets",
   "news",
-  "football",
   "shows",
   "stocks",
   "done",
@@ -53,9 +50,6 @@ export function Onboarding() {
 
   const [picked, setPicked] = useState<Set<CardId>>(() => new Set(OPTIONAL_IDS));
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [leagues, setLeagues] = useState<League[]>(() =>
-    LEAGUE_CATALOG.filter((l) => STARTER_LEAGUES.has(l.slug)),
-  );
   const [stocks, setStocks] = useState<string[]>([]);
   const [artists, setArtists] = useState<string[]>([]);
 
@@ -64,7 +58,7 @@ export function Onboarding() {
       "welcome",
       "location",
       "widgets",
-      ...(["news", "football", "shows", "stocks"] as const).filter((id) => picked.has(id)),
+      ...(["news", "shows", "stocks"] as const).filter((id) => picked.has(id)),
       "done",
     ],
     [picked],
@@ -113,8 +107,8 @@ export function Onboarding() {
         name,
         location: loc!,
         topics,
-        nbaTeam: null,
-        leagues,
+        // Football isn't offered here (it's opt-in), so leagues are left as-is.
+        leagues: settings.soccerLeagues,
         stocks,
         artists,
         hidden: OPTIONAL_IDS.filter((id) => !picked.has(id)),
@@ -263,6 +257,10 @@ export function Onboarding() {
                   );
                 })}
               </div>
+              <p className="onboard__aside">
+                Into a sport, a hobby, or something niche? Once you're set up, the Daybreak bubble
+                generates a widget for anything.
+              </p>
               {nav()}
             </>
           )}
@@ -279,30 +277,6 @@ export function Onboarding() {
                 onAdd={toggleTopic}
               />
               {nav({ skip: true })}
-            </>
-          )}
-
-          {step === "football" && (
-            <>
-              <span className="onboard__overline">Step {index + 1} · Football</span>
-              <h1 className="onboard__title">Which competitions?</h1>
-              <p className="onboard__sub">Fixtures and live scores from everywhere you pick.</p>
-              <PillPicker
-                pills={LEAGUE_CATALOG.map((l) => ({
-                  key: l.slug,
-                  label: l.label,
-                  on: leagues.some((x) => x.slug === l.slug),
-                }))}
-                onToggle={(slug) =>
-                  setLeagues((prev) => {
-                    const league = LEAGUE_CATALOG.find((l) => l.slug === slug)!;
-                    return prev.some((l) => l.slug === slug)
-                      ? prev.filter((l) => l.slug !== slug)
-                      : [...prev, league];
-                  })
-                }
-              />
-              {nav()}
             </>
           )}
 
