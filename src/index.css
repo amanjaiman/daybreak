@@ -2253,9 +2253,12 @@ button {
 /* ------------------------------------------------------------------ notes */
 
 .notes__area {
+  display: block;
   width: 100%;
-  min-height: 110px;
-  resize: vertical;
+  min-height: 72px;
+  /* Height is dragged from the card's own grip (.notes__resize), not the
+     textarea's native corner — see Notes.tsx. */
+  resize: none;
   border: none;
   outline: none;
   background: none;
@@ -2268,6 +2271,63 @@ button {
 
 .notes__area::placeholder {
   color: var(--ink-3);
+}
+
+/* Full-bleed drag strip along the card's bottom edge — negative margins pull
+   it out of .card__body's padding so it reads as part of the card frame. */
+.notes__resize {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 14px;
+  margin: 6px -20px -18px;
+  border-radius: 0 0 var(--radius) var(--radius);
+  cursor: ns-resize;
+  touch-action: none;
+  transition: background 120ms ease;
+}
+
+.notes__resize:hover,
+.notes__resize.is-dragging {
+  background: var(--hover);
+}
+
+/* The card clips its overflow, so keep the focus ring inside the strip. */
+.notes__resize:focus-visible {
+  outline-offset: -2px;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+/* Flow's cards are borderless and unpadded — the strip sits in flow instead. */
+.flow .notes__resize,
+.flow .notes__resize:focus-visible {
+  margin: 6px 0 0;
+  border-radius: 8px;
+  outline-offset: 2px;
+}
+
+.notes__grip {
+  width: 30px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--ink-3);
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.card:hover .notes__grip,
+.notes__resize:focus-visible .notes__grip {
+  opacity: 0.4;
+}
+
+.notes__resize:hover .notes__grip,
+.notes__resize.is-dragging .notes__grip {
+  opacity: 1;
+  background: var(--accent);
+}
+
+@media (hover: none) {
+  .notes__grip { opacity: 0.4; }
 }
 
 /* ------------------------------------------------------------------ focus */
