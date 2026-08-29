@@ -256,7 +256,9 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
           <div className="skeleton" style={{ height: 52 }} />
           <div className="skeleton" style={{ height: 16, width: "70%" }} />
           <div className="skeleton" style={{ height: 16, width: "45%" }} />
-          <p className="widget__pending-note">Building your widget…</p>
+          <p className="widget__pending-note">
+            Building your widget… You can leave and come back.
+          </p>
         </div>
       </Card>
     );

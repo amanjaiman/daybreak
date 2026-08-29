@@ -1,24 +1,18 @@
 // Kicks off an async "Generate Widget" job. The Daybreak frontend POSTs a
-// prompt; we insert a pending row into widget_jobs, start the (slow, web-
-// searching) gpt-5 generation as a background task via EdgeRuntime.waitUntil,
-// and return 202 with the job id immediately. The client shows a placeholder
-// card and polls the widget-status function until the row is done or errored.
+// prompt; we start an OpenAI background response, persist its id with a
+// pending widget_jobs row, and return 202 immediately. The client polls the
+// widget-status function, which retrieves and finalizes that OpenAI response.
 //
-// This lives on Supabase (not Netlify) precisely because a tool-using gpt-5
-// generation runs far past Netlify's ~26s synchronous function ceiling; the
-// edge runtime keeps the background task alive well beyond the 202 response.
+// OpenAI owns the long-running work, so generation is no longer coupled to a
+// Supabase Edge Function worker's wall-clock lifetime.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { generateWidget } from "../_shared/generate.ts";
+import { startWidgetGeneration } from "../_shared/generate.ts";
 import { corsHeaders, json } from "../_shared/cors.ts";
 
 // Supabase injects these into the edge runtime automatically.
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-// Declared by the Supabase edge runtime; keeps a background promise alive
-// after the response is sent (up to the function's wall-clock budget).
-declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -38,33 +32,26 @@ Deno.serve(async (req) => {
   }
   const text = prompt.trim();
 
+  let responseId: string;
+  try {
+    responseId = await startWidgetGeneration(text, apiKey, {
+      model: Deno.env.get("OPENAI_MODEL") || undefined,
+      effort: Deno.env.get("OPENAI_REASONING_EFFORT") || undefined,
+    });
+  } catch (err) {
+    return json(502, { error: err instanceof Error ? err.message : "Widget generation failed to start" });
+  }
+
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const { data: row, error } = await supabase
     .from("widget_jobs")
-    .insert({ prompt: text, status: "pending" })
+    .insert({ prompt: text, status: "pending", openai_response_id: responseId })
     .select("id")
     .single();
   if (error || !row) {
     return json(500, { error: "Couldn't start the generation job." });
   }
   const jobId = row.id as string;
-
-  // Run the actual generation after responding. On finish, write the result
-  // (or a short error) back to the row for the client's poll to pick up.
-  EdgeRuntime.waitUntil(
-    (async () => {
-      try {
-        const widget = await generateWidget(text, apiKey, {
-          model: Deno.env.get("OPENAI_MODEL") || undefined,
-          effort: Deno.env.get("OPENAI_REASONING_EFFORT") || undefined,
-        });
-        await supabase.from("widget_jobs").update({ status: "done", result: widget }).eq("id", jobId);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Widget generation failed";
-        await supabase.from("widget_jobs").update({ status: "error", error: message }).eq("id", jobId);
-      }
-    })(),
-  );
 
   return json(202, { jobId });
 });

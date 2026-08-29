@@ -30,20 +30,24 @@ need Supabase locally — only the OpenAI key.
 
 `netlify.toml` is already set up — connect the repo and deploy as-is. The
 built-in cards need no environment variables (every data source above is
-keyless). **Generate Widget** is the exception, and in production it runs as
-an async job on **Supabase** (a tool-using gpt-5 generation runs well past
-Netlify's ~26s synchronous function limit).
+keyless). **Generate Widget** is the exception, and in production its job
+metadata and AI endpoints live on **Supabase**. OpenAI background mode owns
+the long-running generation itself, so it is not limited by Netlify or
+Supabase request timeouts.
 
 Set up the Supabase backend once:
 
 ```bash
 supabase link --project-ref <your-project-ref>
-supabase db push                       # creates the widget_jobs table
+supabase db push                       # creates/updates the widget_jobs table
 supabase secrets set OPENAI_API_KEY=sk-...   # optionally OPENAI_MODEL / OPENAI_DATA_MODEL / *_REASONING_EFFORT
-supabase functions deploy generate-widget
-supabase functions deploy widget-status
-supabase functions deploy widget-data
+supabase functions deploy             # deploys all three functions
 ```
+
+Netlify's automatic deploy only publishes the frontend and Netlify functions.
+For backend PRs to go live on merge too, enable **Deploy to production** in the
+Supabase GitHub integration. Otherwise run `supabase db push` and
+`supabase functions deploy` after merging.
 
 Then set two variables in the Netlify site env (both public by design — the
 frontend calls the Supabase functions directly with them):
@@ -56,11 +60,12 @@ How it fits together:
 - The Bandsintown/ESPN/Yahoo proxies become `[[redirects]]` rewrites in
   `netlify.toml`.
 - The widget AI backends are three Supabase edge functions in
-  [`supabase/functions/`](supabase/functions): `generate-widget` inserts a job
-  row and runs gpt-5 (with live web search) as a background task, returning a
-  job id immediately; `widget-status` is polled until the job is done (the
-  frontend shows a placeholder card meanwhile and stores the job id, so a
-  reload mid-generation resumes instead of losing the widget); and
+  [`supabase/functions/`](supabase/functions): `generate-widget` starts an
+  OpenAI background response (gpt-5 + live web search), persists its response
+  id with a job row, and returns a Daybreak job id immediately;
+  `widget-status` retrieves and finalizes that response while it is polled
+  (the frontend stores the job id, so a reload mid-generation resumes instead
+  of losing the widget); and
   `widget-data` answers runtime `widget.ai(...)` lookups (OpenAI + web search,
   for real-world data with no free API — local gas prices, rankings, current
   headlines, …). The finished widget spec is stored (and runs) in your

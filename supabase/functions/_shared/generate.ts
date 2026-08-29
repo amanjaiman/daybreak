@@ -20,6 +20,19 @@ export type GeneratedWidget = {
 
 export type GenerateOptions = { model?: string; effort?: string; maxOutputTokens?: number };
 
+type OpenAIResponse = {
+  id?: string;
+  status?: "completed" | "failed" | "in_progress" | "cancelled" | "queued" | "incomplete";
+  error?: { message?: string } | null;
+  incomplete_details?: { reason?: string } | null;
+  output?: { type?: string; content?: { type?: string; text?: string }[] }[];
+};
+
+export type WidgetGenerationStatus =
+  | { status: "pending" }
+  | { status: "done"; widget: GeneratedWidget }
+  | { status: "error"; error: string };
+
 // The flat icon names a generated widget can wear, matching the built-in
 // cards. MUST stay in sync with the WIDGET_ICONS registry in
 // src/components/widgetIcons.tsx. "panel" is the neutral default.
@@ -116,7 +129,7 @@ Dates: format compactly ("Mar 14", "in 3 days", "2h ago"). Numbers: keep units s
 Respond with ONLY the JSON object.`;
 
 /** Extract the assistant's final text from a Responses API payload. */
-function outputText(data: { output?: { type?: string; content?: { type?: string; text?: string }[] }[] }): string {
+function outputText(data: OpenAIResponse): string {
   const parts: string[] = [];
   for (const item of data.output ?? []) {
     if (item.type !== "message") continue;
@@ -146,31 +159,35 @@ function parseLooseJSON(text: string): unknown {
   }
 }
 
-/** Ask OpenAI (Responses API + web search) for a widget spec and validate its shape. */
-export async function generateWidget(
+function responseBody(prompt: string, opts: GenerateOptions, background: boolean): Record<string, unknown> {
+  return {
+    // Background mode lets the model work for several minutes without being
+    // tied to a Supabase Edge Function worker's wall-clock lifetime.
+    model: opts.model || "gpt-5",
+    reasoning: { effort: opts.effort || "medium" },
+    tools: [{ type: "web_search" }],
+    instructions: SYSTEM_PROMPT,
+    input: `Build this widget: ${prompt}`,
+    // Reasoning tokens count against this budget, so keep it generous — a
+    // tight cap truncates the final JSON and yields a half-written script.
+    max_output_tokens: opts.maxOutputTokens ?? 16000,
+    ...(background ? { background: true, store: true } : {}),
+  };
+}
+
+async function createResponse(
   prompt: string,
   apiKey: string,
   opts: GenerateOptions = {},
-): Promise<GeneratedWidget> {
+  background = false,
+): Promise<OpenAIResponse> {
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      // Full gpt-5 with web search: the async job model (Supabase edge
-      // function / dev job map) absorbs the 30s-2min this can take, so we no
-      // longer trade reasoning down to fit a synchronous timeout.
-      model: opts.model || "gpt-5",
-      reasoning: { effort: opts.effort || "medium" },
-      tools: [{ type: "web_search" }],
-      instructions: SYSTEM_PROMPT,
-      input: `Build this widget: ${prompt}`,
-      // Reasoning tokens count against this budget, so keep it generous — a
-      // tight cap truncates the final JSON and yields a half-written script.
-      max_output_tokens: opts.maxOutputTokens ?? 16000,
-    }),
+    body: JSON.stringify(responseBody(prompt, opts, background)),
   });
 
   if (!res.ok) {
@@ -178,10 +195,38 @@ export async function generateWidget(
     throw new Error(`OpenAI request failed (${res.status}): ${detail.slice(0, 300)}`);
   }
 
-  const data = (await res.json()) as Parameters<typeof outputText>[0] & {
-    status?: string;
-    incomplete_details?: { reason?: string };
-  };
+  return (await res.json()) as OpenAIResponse;
+}
+
+/** Start a durable OpenAI background response and return its polling id. */
+export async function startWidgetGeneration(
+  prompt: string,
+  apiKey: string,
+  opts: GenerateOptions = {},
+): Promise<string> {
+  const data = await createResponse(prompt, apiKey, opts, true);
+  if (!data.id) throw new Error("OpenAI didn't return a response id");
+  return data.id;
+}
+
+async function retrieveResponse(responseId: string, apiKey: string): Promise<OpenAIResponse> {
+  const res = await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(responseId)}`, {
+    headers: { authorization: `Bearer ${apiKey}` },
+  });
+  if (res.status === 404) {
+    return {
+      status: "failed",
+      error: { message: "The generation result expired before it could be retrieved. Try again." },
+    };
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`OpenAI status request failed (${res.status}): ${detail.slice(0, 300)}`);
+  }
+  return (await res.json()) as OpenAIResponse;
+}
+
+function parseCompletedResponse(data: OpenAIResponse): GeneratedWidget {
   // A truncated response (hit the token budget) would leave the script cut off
   // mid-statement; fail loudly so the job retries instead of storing a broken
   // widget that throws "Unexpected end of input" when it runs.
@@ -223,4 +268,40 @@ export async function generateWidget(
         ? Math.max(60_000, Math.round(spec.refreshMs))
         : null,
   };
+}
+
+/** Retrieve an OpenAI background response and normalize it for job polling. */
+export async function getWidgetGeneration(
+  responseId: string,
+  apiKey: string,
+): Promise<WidgetGenerationStatus> {
+  const data = await retrieveResponse(responseId, apiKey);
+  if (data.status === "queued" || data.status === "in_progress") return { status: "pending" };
+  if (data.status === "failed") {
+    return { status: "error", error: data.error?.message || "OpenAI generation failed." };
+  }
+  if (data.status === "cancelled") {
+    return { status: "error", error: "OpenAI generation was cancelled." };
+  }
+  if (data.status === "incomplete") {
+    return {
+      status: "error",
+      error: `The model's response was cut off (${data.incomplete_details?.reason ?? "incomplete"}). Try again.`,
+    };
+  }
+  if (data.status !== "completed") {
+    return {
+      status: "error",
+      error: `OpenAI returned an unexpected status (${data.status ?? "unknown"}).`,
+    };
+  }
+
+  try {
+    return { status: "done", widget: parseCompletedResponse(data) };
+  } catch (err) {
+    return {
+      status: "error",
+      error: err instanceof Error ? err.message : "Widget generation failed",
+    };
+  }
 }
