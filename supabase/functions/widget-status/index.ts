@@ -5,6 +5,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { corsHeaders, json } from "../_shared/cors.ts";
+import { getWidgetGeneration } from "../_shared/generate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -13,13 +14,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET") return json(405, { error: "GET only" });
 
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) return json(503, { error: "Widget generation isn't configured (OPENAI_API_KEY is not set)." });
+
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return json(400, { error: "Missing job id" });
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const { data: row, error } = await supabase
     .from("widget_jobs")
-    .select("status, result, error")
+    .select("status, result, error, openai_response_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -28,5 +32,37 @@ Deno.serve(async (req) => {
 
   if (row.status === "done") return json(200, { status: "done", widget: row.result });
   if (row.status === "error") return json(200, { status: "error", error: row.error ?? "Widget generation failed" });
-  return json(200, { status: "pending" });
+
+  const responseId = row.openai_response_id as string | null;
+  if (!responseId) {
+    const message = "This generation was interrupted before it started. Try again.";
+    await supabase.from("widget_jobs").update({ status: "error", error: message }).eq("id", id);
+    return json(200, { status: "error", error: message });
+  }
+
+  let generation;
+  try {
+    generation = await getWidgetGeneration(responseId, apiKey);
+  } catch {
+    // OpenAI status retrieval can fail transiently (network, rate limit, 5xx).
+    // Keep the durable job pending; the client will retry this endpoint.
+    return json(503, { error: "Generation status is temporarily unavailable." });
+  }
+
+  if (generation.status === "pending") return json(200, generation);
+  if (generation.status === "done") {
+    await supabase
+      .from("widget_jobs")
+      .update({ status: "done", result: generation.widget })
+      .eq("id", id)
+      .eq("status", "pending");
+    return json(200, { status: "done", widget: generation.widget });
+  }
+
+  await supabase
+    .from("widget_jobs")
+    .update({ status: "error", error: generation.error })
+    .eq("id", id)
+    .eq("status", "pending");
+  return json(200, generation);
 });

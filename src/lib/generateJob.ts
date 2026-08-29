@@ -31,17 +31,23 @@ async function fetchStatus(jobId: string): Promise<JobStatus> {
     headers: fnHeaders(),
   });
   const data = (await res.json().catch(() => ({}))) as JobStatus & { error?: string };
+  if (res.status === 404) {
+    return { status: "error", error: data.error ?? "This generation job no longer exists. Try again." };
+  }
   if (!res.ok) throw new Error(data.error ?? `${res.status} ${res.statusText}`);
   return data;
 }
 
 const POLL_MS = 2500;
 const FIRST_POLL_MS = 1200;
-const GIVE_UP_MS = 4 * 60_000;
+const MAX_RETRY_MS = 30_000;
 
 /**
  * Poll a job until it finishes, calling back with the widget or an error.
- * Transient network/poll failures are swallowed and retried until GIVE_UP_MS.
+ * Transient network/poll failures are swallowed and retried with backoff.
+ * There is deliberately no client-side generation deadline: the OpenAI
+ * response is a durable background job, and placeholders persist across
+ * reloads, so a slow-but-healthy generation must not become a false error.
  * Returns a cancel function (used when the placeholder card is removed).
  */
 export function pollJob(
@@ -49,21 +55,22 @@ export function pollJob(
   cbs: { onDone: (widget: GeneratedWidget) => void; onError: (message: string) => void },
 ): () => void {
   let cancelled = false;
-  const startedAt = Date.now();
+  let consecutiveFailures = 0;
 
   const loop = async () => {
     if (cancelled) return;
     try {
       const s = await fetchStatus(jobId);
       if (cancelled) return;
+      consecutiveFailures = 0;
       if (s.status === "done") return cbs.onDone(s.widget);
       if (s.status === "error") return cbs.onError(s.error);
     } catch {
-      /* transient — fall through and retry until we give up */
+      consecutiveFailures += 1;
     }
     if (cancelled) return;
-    if (Date.now() - startedAt > GIVE_UP_MS) return cbs.onError("Generation timed out. Try again.");
-    window.setTimeout(loop, POLL_MS);
+    const retryMs = Math.min(POLL_MS * 2 ** Math.min(consecutiveFailures, 4), MAX_RETRY_MS);
+    window.setTimeout(loop, retryMs);
   };
 
   window.setTimeout(loop, FIRST_POLL_MS);

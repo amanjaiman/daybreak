@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { generateWidget } from './supabase/functions/_shared/generate.ts'
+import { getWidgetGeneration, startWidgetGeneration } from './supabase/functions/_shared/generate.ts'
 import { fetchWidgetData } from './supabase/functions/_shared/widget-data.ts'
 import { proxyJSON } from './netlify/functions/proxy.ts'
 
@@ -106,12 +106,15 @@ function unfurlPlugin(): Plugin {
 }
 
 // Dev-server twin of the Supabase generate-widget + widget-status edge
-// functions: same generateWidget() core (so the prompt/validation aren't
+// functions: same background-generation core (so prompt/validation aren't
 // duplicated), same async job shape (POST returns a job id; the client polls
 // /api/widget-status), but backed by an in-memory job map instead of Postgres
 // — so local dev needs only OPENAI_API_KEY, no Supabase. The key comes from
 // .env (gitignored) or the shell environment.
-type DevJob = { status: 'pending' } | { status: 'done'; result: unknown } | { status: 'error'; error: string }
+type DevJob =
+  | { status: 'pending'; responseId: string }
+  | { status: 'done'; result: unknown }
+  | { status: 'error'; error: string }
 
 function generateWidgetPlugin(apiKey: string | undefined, opts: { model?: string; effort?: string }): Plugin {
   const jobs = new Map<string, DevJob>()
@@ -141,28 +144,47 @@ function generateWidgetPlugin(apiKey: string | undefined, opts: { model?: string
         if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 2000) {
           return respond(400, { error: 'Describe the widget in 1-2000 characters.' })
         }
+        let responseId: string
+        try {
+          responseId = await startWidgetGeneration(prompt.trim(), apiKey, opts)
+        } catch (err) {
+          return respond(502, {
+            error: err instanceof Error ? err.message : 'Widget generation failed to start',
+          })
+        }
         const jobId = crypto.randomUUID()
-        jobs.set(jobId, { status: 'pending' })
-        // Run generation in the background; the client polls /api/widget-status.
-        generateWidget(prompt.trim(), apiKey, opts).then(
-          (widget) => jobs.set(jobId, { status: 'done', result: widget }),
-          (err) => jobs.set(jobId, { status: 'error', error: err instanceof Error ? err.message : 'Widget generation failed' }),
-        )
+        jobs.set(jobId, { status: 'pending', responseId })
         respond(202, { jobId })
       })
 
-      server.middlewares.use('/api/widget-status', (req, res) => {
+      server.middlewares.use('/api/widget-status', async (req, res) => {
         const respond = (status: number, body: unknown) => {
           res.statusCode = status
           res.setHeader('content-type', 'application/json')
           res.end(JSON.stringify(body))
         }
+        if (!apiKey) {
+          return respond(503, { error: "Widget generation isn't configured (OPENAI_API_KEY is not set)." })
+        }
         const id = new URL(req.url ?? '', 'http://internal').searchParams.get('id')
-        const job = id ? jobs.get(id) : undefined
+        if (!id) return respond(400, { error: 'Missing job id' })
+        const job = jobs.get(id)
         if (!job) return respond(404, { error: 'Unknown job' })
         if (job.status === 'done') return respond(200, { status: 'done', widget: job.result })
         if (job.status === 'error') return respond(200, { status: 'error', error: job.error })
-        respond(200, { status: 'pending' })
+        let generation
+        try {
+          generation = await getWidgetGeneration(job.responseId, apiKey)
+        } catch {
+          return respond(503, { error: 'Generation status is temporarily unavailable.' })
+        }
+        if (generation.status === 'pending') return respond(200, generation)
+        if (generation.status === 'done') {
+          jobs.set(id, { status: 'done', result: generation.widget })
+          return respond(200, { status: 'done', widget: generation.widget })
+        }
+        jobs.set(id, { status: 'error', error: generation.error })
+        respond(200, generation)
       })
     },
   }
