@@ -1587,6 +1587,137 @@ button {
 .gw-up { color: var(--positive); font-weight: 600; }
 .gw-down { color: var(--live); font-weight: 600; }
 
+/* Richer generated-widget primitives. These stay deliberately composable:
+   the model chooses the content and hierarchy while the app owns spacing,
+   typography, color, and responsive behavior. */
+.gw-stack,
+.gw-list {
+  display: grid;
+  gap: 0;
+}
+
+.gw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: 8px;
+}
+
+.gw-stat {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.gw-stat__label,
+.gw-stat__meta {
+  display: block;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gw-stat__value {
+  display: block;
+  margin: 2px 0 1px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+}
+
+.gw-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.gw-item:last-child { border-bottom: none; }
+.gw-item__main { min-width: 0; }
+
+.gw-item__title,
+.gw-item__meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gw-item__title {
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 550;
+}
+
+.gw-item__meta {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.gw-item__value {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gw-progress {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.gw-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.gw-segment {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.gw-segment::-webkit-scrollbar { display: none; }
+
+.gw-segment__button {
+  flex: none;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.gw-segment__button:hover { color: var(--ink); background: var(--hover); }
+.gw-segment__button.is-active { color: var(--ink); background: var(--accent-soft); }
+
+.gw-note {
+  margin-top: 8px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
 /* Sized home for the SVG that widget.sparkline() returns. */
 .gw-spark {
   display: block;

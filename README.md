@@ -61,7 +61,7 @@ How it fits together:
   `netlify.toml`.
 - The widget AI backends are three Supabase edge functions in
   [`supabase/functions/`](supabase/functions): `generate-widget` starts an
-  OpenAI background response (gpt-5 + live web search), persists its response
+  OpenAI background response (GPT-5.6 Sol with high reasoning + live web search), persists its response
   id with a job row, and returns a Daybreak job id immediately;
   `widget-status` retrieves and finalizes that response while it is polled
   (the frontend stores the job id, so a reload mid-generation resumes instead
