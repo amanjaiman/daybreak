@@ -49,6 +49,18 @@ test("background widget generation lifecycle", async (t) => {
     assert.ok(issues.some((issue) => issue.includes("hard-coded colors")));
   });
 
+  await t.test("rejects media that cannot load in the network-isolated frame", () => {
+    const issues = validateGeneratedWidget({
+      title: "Remote art",
+      icon: "panel",
+      html: '<img src="https://example.com/art.jpg">',
+      script: "widget.root.dataset.ready = 'true';",
+      refreshMs: null,
+    });
+
+    assert.ok(issues.includes("HTML contains a forbidden element"));
+  });
+
   await t.test("starts an independent structured review pass", async () => {
     let request;
     globalThis.fetch = async (url, init) => {

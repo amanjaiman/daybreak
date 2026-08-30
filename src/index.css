@@ -1813,6 +1813,15 @@ button {
   color: var(--live);
 }
 
+.gw-frame {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
 /* Placeholder shown while a generated widget is still being built. */
 .widget__pending {
   display: flex;

@@ -1,223 +1,35 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "./Card";
-import { dataKey, useCustomWidgets } from "../lib/customWidgets";
+import { useCustomWidgets } from "../lib/customWidgets";
 import type { CustomWidget } from "../lib/customWidgets";
-import { fnHeaders, fnUrl } from "../lib/backend";
 import { useSettings } from "../lib/settings";
 import { RefreshIcon } from "./icons";
 import { WidgetIcon } from "./widgetIcons";
+import { SandboxedWidget } from "./SandboxedWidget";
 
 /**
- * The surface a generated widget's script runs against. This is the whole
- * contract between the OpenAI-produced code and the app — the generation
- * system prompt (supabase/functions/_shared/generate.ts) documents exactly
- * this shape, so keep the two in sync.
- */
-type WidgetApi = {
-  root: HTMLElement;
-  /** How many columns wide the card currently is: 1, 2, or 3. The script is
-   *  re-run when this changes, so render more content when it's larger. */
-  cols: number;
-  store: { get<T>(): T | null; set(value: unknown): void };
-  getJSON: (url: string) => Promise<unknown>;
-  ai: (request: string) => Promise<unknown>;
-  esc: (s: unknown) => string;
-  sparkline: (values: number[]) => string;
-  refresh: () => void;
-};
-
-// The card's column count, matching the CSS container-query breakpoints on
-// .board__item (560/900px). Widgets in the Flow layout (no .board__item
-// ancestor) are always a single column.
-const colsFor = (width: number): number => (width >= 900 ? 3 : width >= 560 ? 2 : 1);
-function cardCols(root: HTMLElement): number {
-  const container = root.closest(".board__item") as HTMLElement | null;
-  return container ? colsFor(container.clientWidth) : 1;
-}
-
-/**
- * Finished sparkline markup for generated widgets — the one chart style the
- * design system allows (accent polyline, soft area fill, no axes or labels).
- * Provided as a helper so generated scripts can't hand-roll off-brand charts.
- */
-function sparklineSVG(values: number[]): string {
-  const nums = (Array.isArray(values) ? values : []).map(Number).filter((n) => Number.isFinite(n));
-  if (nums.length < 2) return "";
-  const W = 100;
-  const H = 32;
-  const PAD = 2;
-  const min = Math.min(...nums);
-  const span = Math.max(...nums) - min || 1;
-  const pts = nums.map((v, i) => [
-    (PAD + (i / (nums.length - 1)) * (W - PAD * 2)).toFixed(2),
-    (PAD + (1 - (v - min) / span) * (H - PAD * 2)).toFixed(2),
-  ]);
-  const line = pts.map((p) => p.join(",")).join(" ");
-  const area = `M${pts[0][0]},${H} L${pts.map((p) => p.join(",")).join(" L")} L${pts[pts.length - 1][0]},${H} Z`;
-  return (
-    `<svg class="gw-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">` +
-    `<path d="${area}" fill="var(--accent)" fill-opacity="0.08"/>` +
-    `<polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>` +
-    `</svg>`
-  );
-}
-
-// djb2 — good enough to key an ai() response cache by request text.
-function hash(s: string): string {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
-}
-
-function makeApi(
-  widget: CustomWidget,
-  root: HTMLElement,
-  refresh: () => void,
-  bypassAiCache: boolean,
-  cols: number,
-): WidgetApi {
-  const key = dataKey(widget.id);
-  return {
-    root,
-    cols,
-    store: {
-      get: () => {
-        try {
-          return JSON.parse(localStorage.getItem(key) ?? "null");
-        } catch {
-          return null;
-        }
-      },
-      set: (value) => localStorage.setItem(key, JSON.stringify(value)),
-    },
-    getJSON: async (url: string) => {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        return await res.json();
-      } catch (err) {
-        // fetch() rejects with TypeError on CORS/network failure — retry
-        // those (and only those) through the server-side JSON proxy.
-        if (!(err instanceof TypeError)) throw err;
-        const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
-        return body;
-      }
-    },
-    // Real-world data with no public API: answered server-side by OpenAI
-    // with live web search (the widget-data Supabase edge function). Slow and
-    // metered, so successful responses are cached here per request text —
-    // generated scripts don't have to get TTL logic right for reloads to
-    // stay free. The card header's manual refresh bypasses the cache.
-    ai: async (request: string) => {
-      const cacheKey = `${key}.ai`;
-      const ttl = Math.max(widget.refreshMs ?? 0, 3_600_000);
-      const h = hash(request);
-      let cache: Record<string, { t: number; data: unknown }> = {};
-      try {
-        cache = JSON.parse(localStorage.getItem(cacheKey) ?? "{}");
-      } catch {
-        /* corrupt cache — refetch */
-      }
-      const hit = cache[h];
-      if (!bypassAiCache && hit && Date.now() - hit.t < ttl) return hit.data;
-
-      const res = await fetch(fnUrl("widget-data"), {
-        method: "POST",
-        headers: fnHeaders(),
-        body: JSON.stringify({ prompt: request }),
-      });
-      const body = (await res.json().catch(() => ({}))) as { data?: unknown; error?: string };
-      if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
-
-      cache[h] = { t: Date.now(), data: body.data };
-      // A widget rarely has more than a couple of live requests; cap the
-      // cache so stale request-variants (e.g. old locations) don't pile up.
-      const entries = Object.entries(cache).sort((a, b) => b[1].t - a[1].t).slice(0, 8);
-      localStorage.setItem(cacheKey, JSON.stringify(Object.fromEntries(entries)));
-      return body.data;
-    },
-    esc: (s) =>
-      String(s)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;"),
-    sparkline: sparklineSVG,
-    refresh,
-  };
-}
-
-/**
- * Runs a generated widget: the stored HTML is stamped into the card body,
- * then the stored script executes against the WidgetApi. Refreshing (manual
- * button, the polling interval, or api.refresh()) resets the body and reruns
- * the script from scratch, so scripts stay simple and idempotent — any state
- * worth keeping goes through api.store.
+ * Hosts generated code in an opaque-origin iframe. Refreshing replaces
+ * the frame so old event listeners and timers are terminated cleanly.
  */
 export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
   const { remove, retry } = useCustomWidgets();
   const { settings, update } = useSettings();
-  const rootRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [runKey, setRunKey] = useState(0);
   const bypassAiCache = useRef(false);
   // force=true (the header refresh button) makes widget.ai skip its cache.
-  const rerun = (force = false) => {
+  const rerun = useCallback((force = false) => {
     bypassAiCache.current = force;
     setRunKey((k) => k + 1);
-  };
+  }, []);
 
   const ready = widget.status === "ready";
-
-  useEffect(() => {
-    if (!ready) return;
-    const root = rootRef.current;
-    if (!root) return;
-    root.innerHTML = widget.html;
-    setError(null);
-    const force = bypassAiCache.current;
-    bypassAiCache.current = false;
-    try {
-      const fn = new Function("widget", `"use strict";\n${widget.script}`);
-      // cols is read fresh from the DOM each run; the observer below re-runs
-      // the script whenever the card crosses a column breakpoint.
-      fn(makeApi(widget, root, () => rerun(), force, cardCols(root)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-    return () => {
-      root.innerHTML = "";
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, widget.id, widget.html, widget.script, runKey]);
-
-  // Re-run when the card is resized across a column breakpoint, so width-aware
-  // widgets (widget.cols) render the right amount of content for their size.
-  useEffect(() => {
-    if (!ready) return;
-    const root = rootRef.current;
-    const container = root?.closest(".board__item") as HTMLElement | null;
-    if (!container) return;
-    let last = colsFor(container.clientWidth);
-    const ro = new ResizeObserver(() => {
-      const now = colsFor(container.clientWidth);
-      if (now !== last) {
-        last = now;
-        rerun();
-      }
-    });
-    ro.observe(container);
-    return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, widget.id]);
 
   useEffect(() => {
     if (!ready || !widget.refreshMs) return;
     const timer = setInterval(() => rerun(), Math.max(60_000, widget.refreshMs));
     return () => clearInterval(timer);
-  }, [ready, widget.refreshMs]);
+  }, [ready, rerun, widget.refreshMs]);
 
   // A finished widget is only taken off the board (bring it back from
   // Personalize); deleting for good — including a half-built or failed one —
@@ -307,7 +119,14 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
           </button>
         </div>
       ) : null}
-      <div className="gw-root" ref={rootRef} style={error ? { display: "none" } : undefined} />
+      <SandboxedWidget
+        widget={widget}
+        runKey={runKey}
+        bypassAiCache={bypassAiCache.current}
+        hidden={!!error}
+        onError={setError}
+        onRefresh={rerun}
+      />
     </Card>
   );
 }

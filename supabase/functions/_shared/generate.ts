@@ -131,6 +131,8 @@ Your script receives one argument named \`widget\`:
 - \`widget.sparkline(numbers)\` — returns finished, on-brand SVG markup for a trend line. The only way to draw a chart.
 - \`widget.refresh()\` — resets the card to your html and reruns your whole script.
 
+The script runs in a network-isolated, opaque-origin iframe. It cannot access the Daybreak page, browser storage, cookies, page globals, or the network directly. Use ONLY the widget capabilities above. Do not emit images or other remote media; generated widget bodies are compact, text-and-data UI built from the Daybreak kit.
+
 ## Getting data — make the widget as smart as the built-in ones
 The built-in cards (weather, news, stocks) fetch real data automatically; generated widgets must feel the same. Pick the FIRST workable option:
 1. \`widget.getJSON(url)\` for data with a free, keyless public JSON API you have VERIFIED with web_search exists and is CORS-friendly or works through the proxy (e.g. open-meteo.com weather + geocoding, frankfurter.dev FX, api.coingecko.com crypto, hacker-news.firebaseio.com). Confirm the exact path and response shape before relying on it. Do NOT use Reddit, Twitter/X, Instagram, Facebook, or other social/consumer sites as JSON APIs — they block server-side requests and rate-limit by IP, so they fail even through the proxy.
@@ -151,7 +153,7 @@ Read \`widget.cols\` at render time (a rerun may carry a different value), and d
 
 ## Lifecycle rules
 - The script reruns from scratch on every refresh (manual button, the refreshMs interval, or widget.refresh()), so it must be idempotent: read state from widget.store, render, done. Keep durable state in widget.store only — module-level variables are lost on rerun.
-- No imports, no external libraries, no <script> or <style> tags in html, no async top level (use an inner async function or promise chains).
+- No imports, no external libraries, no <script>, <style>, <img>, audio, or video tags in html, no async top level (use an inner async function or promise chains).
 - Widgets that fetch data should set refreshMs — usually 600000-1800000 for getJSON polling, and at least 3600000 (1h) for ai-backed data (the cache rule above keeps reruns cheap) — and always show graceful loading and error states.
 - For user-entered data widgets (trackers, lists, counters): render an add form plus the stored items, with a way to delete items. Follow the pattern: read store -> render -> wire events -> on change, store.set then re-render. If a form has more than one input, include a submit button — Enter only implicitly submits single-input forms.
 
@@ -237,7 +239,7 @@ export function validateGeneratedWidget(widget: GeneratedWidget): string[] {
 
   if (widget.html.length > 12_000) issues.push("HTML is too large");
   if (widget.script.length > 40_000) issues.push("Script is too large");
-  if (/<(?:script|style|iframe|object|embed|link)\b/i.test(widget.html)) {
+  if (/<(?:script|style|iframe|object|embed|link|img|audio|video|source)\b/i.test(widget.html)) {
     issues.push("HTML contains a forbidden element");
   }
   if (!/\bwidget\./.test(widget.script)) issues.push("Script does not use the widget capability API");
