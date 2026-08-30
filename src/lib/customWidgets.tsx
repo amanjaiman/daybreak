@@ -5,6 +5,8 @@ import type { CustomId } from "./board";
 import { useSettings } from "./settings";
 import { pollJob, startGeneration } from "./generateJob";
 
+import { generationDeadline } from './generationLifecycle';
+
 /**
  * User-generated widgets ("Generate Widget" in the bubble menu). Each one is
  * a spec produced by OpenAI — static HTML plus a script run inside the card
@@ -25,6 +27,8 @@ export type CustomWidget = {
   status: "pending" | "ready" | "error";
   /** Backend job id while status is pending (used to resume polling). */
   jobId?: string;
+  /** When the current generation attempt began, used to stop stale pollers. */
+  generationStartedAt?: number;
   /** Message shown when generation itself failed (status === "error"). */
   genError?: string;
   title: string;
@@ -106,6 +110,7 @@ export function CustomWidgetsProvider({ children }: { children: ReactNode }) {
       script: "",
       refreshMs: null,
       createdAt: Date.now(),
+      generationStartedAt: Date.now(),
     };
     setWidgets((all) => [...all, widget]);
     // Surface the new placeholder at the top of the emptiest column.
@@ -117,6 +122,8 @@ export function CustomWidgetsProvider({ children }: { children: ReactNode }) {
   const retry: CustomWidgetsContext["retry"] = async (id) => {
     const widget = widgets.find((w) => w.id === id);
     if (!widget) return;
+    const generationStartedAt = Date.now();
+    patch(id, { generationStartedAt });
     patch(id, { status: "pending", jobId: undefined, genError: undefined, title: "Generating…", icon: "panel" });
     try {
       const jobId = await startGeneration(widget.prompt);
@@ -141,7 +148,7 @@ export function CustomWidgetsProvider({ children }: { children: ReactNode }) {
     for (const w of widgets) {
       if (w.status !== "pending" || !w.jobId || pollers.current.has(w.jobId)) continue;
       const { id, jobId } = w;
-      const cancel = pollJob(jobId, {
+      const cancel = pollJob(jobId, generationDeadline(w.generationStartedAt ?? w.createdAt), {
         onDone: (spec) => {
           pollers.current.delete(jobId);
           patch(id, { ...spec, status: "ready", jobId: undefined, genError: undefined });
