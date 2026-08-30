@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   getWidgetGeneration,
   startWidgetGeneration,
+  startWidgetReview,
   validateGeneratedWidget,
 } from "../supabase/functions/_shared/generate.ts";
 
@@ -27,7 +28,7 @@ test("background widget generation lifecycle", async (t) => {
     assert.equal(body.model, "gpt-5.6-sol");
     assert.equal(body.reasoning.effort, "high");
     assert.equal(body.max_tool_calls, 6);
-    assert.equal(body.prompt_cache_key, "daybreak-widget-v3");
+    assert.equal(body.prompt_cache_key, "daybreak-widget-v3-build");
     assert.equal(body.text.verbosity, "low");
     assert.equal(body.text.format.type, "json_schema");
     assert.equal(body.text.format.strict, true);
@@ -46,6 +47,30 @@ test("background widget generation lifecycle", async (t) => {
     assert.ok(issues.some((issue) => issue.includes("direct network access")));
     assert.ok(issues.some((issue) => issue.includes("window")));
     assert.ok(issues.some((issue) => issue.includes("hard-coded colors")));
+  });
+
+  await t.test("starts an independent structured review pass", async () => {
+    let request;
+    globalThis.fetch = async (url, init) => {
+      request = { url, init };
+      return Response.json({ id: "resp_review", status: "queued" });
+    };
+    const draft = {
+      title: "Birthdays",
+      icon: "calendar",
+      html: '<form class="gw-form"></form>',
+      script: "widget.root.textContent = 'Ready';",
+      refreshMs: null,
+    };
+
+    assert.equal(await startWidgetReview("Track birthdays", draft, "test-key"), "resp_review");
+    const body = JSON.parse(request.init.body);
+    assert.equal(body.background, true);
+    assert.equal(body.prompt_cache_key, "daybreak-widget-v3-review");
+    assert.equal(body.text.format.type, "json_schema");
+    assert.match(body.instructions, /Independent review pass/);
+    assert.match(body.input, /Original request:\nTrack birthdays/);
+    assert.match(body.input, /Candidate widget:/);
   });
 
   await t.test("requires complete states for data widgets", () => {

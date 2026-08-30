@@ -76,13 +76,21 @@ const QUALITY_PROMPT = [
   "Do not imitate a full webpage inside a card. Use the smallest composition that completely solves the request.",
 ].join("\n");
 
-function qualityResponseConfig(opts: GenerateOptions): Record<string, unknown> {
+const REVIEW_PROMPT = [
+  "## Independent review pass",
+  "You are the senior engineer and product designer responsible for the final publish decision.",
+  "Review the candidate against the original request, every quality-gate item, the runtime contract, and the native Daybreak visual language.",
+  "Use web search again when the candidate depends on public data, and correct any unverified source, endpoint, field assumption, or stale-data behavior.",
+  "Return a complete replacement widget, not review notes. Preserve good work, but rewrite any markup or script needed to make the result genuinely useful, resilient, polished, and responsive.",
+].join("\n");
+
+function qualityResponseConfig(opts: GenerateOptions, stage: "build" | "review"): Record<string, unknown> {
   return {
     model: opts.model || "gpt-5.6-sol",
     reasoning: { effort: opts.effort || "high" },
     max_output_tokens: opts.maxOutputTokens ?? 24_000,
     max_tool_calls: 6,
-    prompt_cache_key: "daybreak-widget-v3",
+    prompt_cache_key: `daybreak-widget-v3-${stage}`,
     text: {
       verbosity: "low",
       format: {
@@ -256,20 +264,29 @@ export function validateGeneratedWidget(widget: GeneratedWidget): string[] {
   return issues;
 }
 
-function responseBody(prompt: string, opts: GenerateOptions, background: boolean): Record<string, unknown> {
+function responseBody(
+  prompt: string,
+  opts: GenerateOptions,
+  background: boolean,
+  reviewDraft?: GeneratedWidget,
+): Record<string, unknown> {
+  const stage = reviewDraft ? "review" : "build";
   return {
     // Background mode lets the model work for several minutes without being
     // tied to a Supabase Edge Function worker's wall-clock lifetime.
     model: opts.model || "gpt-5",
     reasoning: { effort: opts.effort || "medium" },
     tools: [{ type: "web_search" }],
-    instructions: SYSTEM_PROMPT + "\n\n" + QUALITY_PROMPT,
-    input: `Build this widget: ${prompt}`,
+    instructions:
+      SYSTEM_PROMPT + "\n\n" + QUALITY_PROMPT + (reviewDraft ? "\n\n" + REVIEW_PROMPT : ""),
+    input: reviewDraft
+      ? `Original request:\n${prompt}\n\nCandidate widget:\n${JSON.stringify(reviewDraft)}`
+      : `Build this widget: ${prompt}`,
     // Reasoning tokens count against this budget, so keep it generous — a
     // tight cap truncates the final JSON and yields a half-written script.
     max_output_tokens: opts.maxOutputTokens ?? 16000,
     ...(background ? { background: true, store: true } : {}),
-    ...qualityResponseConfig(opts),
+    ...qualityResponseConfig(opts, stage),
   };
 }
 
@@ -278,6 +295,7 @@ async function createResponse(
   apiKey: string,
   opts: GenerateOptions = {},
   background = false,
+  reviewDraft?: GeneratedWidget,
 ): Promise<OpenAIResponse> {
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -285,7 +303,7 @@ async function createResponse(
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(responseBody(prompt, opts, background)),
+    body: JSON.stringify(responseBody(prompt, opts, background, reviewDraft)),
   });
 
   if (!res.ok) {
@@ -304,6 +322,18 @@ export async function startWidgetGeneration(
 ): Promise<string> {
   const data = await createResponse(prompt, apiKey, opts, true);
   if (!data.id) throw new Error("OpenAI didn't return a response id");
+  return data.id;
+}
+
+/** Start a second durable response that critiques and improves a valid draft. */
+export async function startWidgetReview(
+  prompt: string,
+  draft: GeneratedWidget,
+  apiKey: string,
+  opts: GenerateOptions = {},
+): Promise<string> {
+  const data = await createResponse(prompt, apiKey, opts, true, draft);
+  if (!data.id) throw new Error("OpenAI didn't return a review response id");
   return data.id;
 }
 
