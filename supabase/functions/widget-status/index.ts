@@ -10,6 +10,9 @@ import { getWidgetGeneration } from "../_shared/generate.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+const GENERATION_TIMEOUT_MS = 15 * 60_000;
+const GENERATION_TIMEOUT_MESSAGE = 'This widget took longer than 15 minutes to build. Try again.';
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET") return json(405, { error: "GET only" });
@@ -43,6 +46,22 @@ Deno.serve(async (req) => {
   let generation;
   try {
     generation = await getWidgetGeneration(responseId, apiKey);
+    if (generation.status === 'pending') {
+      const { data: ageRow } = await supabase
+        .from('widget_jobs')
+        .select('created_at')
+        .eq('id', id)
+        .single();
+      const createdAt = Date.parse(ageRow?.created_at ?? '');
+      if (Number.isFinite(createdAt) && Date.now() - createdAt >= GENERATION_TIMEOUT_MS) {
+        await supabase
+          .from('widget_jobs')
+          .update({ status: 'error', error: GENERATION_TIMEOUT_MESSAGE })
+          .eq('id', id)
+          .eq('status', 'pending');
+        return json(200, { status: 'error', error: GENERATION_TIMEOUT_MESSAGE });
+      }
+    }
   } catch {
     // OpenAI status retrieval can fail transiently (network, rate limit, 5xx).
     // Keep the durable job pending; the client will retry this endpoint.

@@ -8,12 +8,15 @@
 import type { GeneratedWidget } from "./customWidgets";
 import { fnHeaders, fnUrl } from "./backend";
 
+import { GENERATION_TIMEOUT_MESSAGE, generationTimedOut } from './generationLifecycle';
+
 /** Start a generation job; resolves to its job id once the backend accepts it. */
 export async function startGeneration(prompt: string): Promise<string> {
   const res = await fetch(fnUrl("generate-widget"), {
     method: "POST",
     headers: fnHeaders(),
     body: JSON.stringify({ prompt }),
+    signal: AbortSignal.timeout(30_000),
   });
   const data = (await res.json().catch(() => ({}))) as { jobId?: string; error?: string };
   if (!res.ok) throw new Error(data.error ?? `${res.status} ${res.statusText}`);
@@ -29,6 +32,7 @@ type JobStatus =
 async function fetchStatus(jobId: string): Promise<JobStatus> {
   const res = await fetch(`${fnUrl("widget-status")}?id=${encodeURIComponent(jobId)}`, {
     headers: fnHeaders(),
+    signal: AbortSignal.timeout(15_000),
   });
   const data = (await res.json().catch(() => ({}))) as JobStatus & { error?: string };
   if (res.status === 404) {
@@ -45,32 +49,44 @@ const MAX_RETRY_MS = 30_000;
 /**
  * Poll a job until it finishes, calling back with the widget or an error.
  * Transient network/poll failures are swallowed and retried with backoff.
- * There is deliberately no client-side generation deadline: the OpenAI
- * response is a durable background job, and placeholders persist across
- * reloads, so a slow-but-healthy generation must not become a false error.
+ * The first status check always runs, even for a restored stale placeholder,
+ * so a completed durable response can still be recovered. A 15-minute safety
+ * deadline then turns genuinely stuck jobs into a retryable error.
  * Returns a cancel function (used when the placeholder card is removed).
  */
 export function pollJob(
   jobId: string,
+  deadlineAt: number,
   cbs: { onDone: (widget: GeneratedWidget) => void; onError: (message: string) => void },
 ): () => void {
   let cancelled = false;
   let consecutiveFailures = 0;
+  let attemptedStatus = false;
+
+  const failIfTimedOut = () => {
+    if (!attemptedStatus || !generationTimedOut(deadlineAt)) return false;
+    cbs.onError(GENERATION_TIMEOUT_MESSAGE);
+    return true;
+  };
 
   const loop = async () => {
     if (cancelled) return;
+    if (failIfTimedOut()) return;
     try {
       const s = await fetchStatus(jobId);
+      attemptedStatus = true;
       if (cancelled) return;
       consecutiveFailures = 0;
       if (s.status === "done") return cbs.onDone(s.widget);
       if (s.status === "error") return cbs.onError(s.error);
     } catch {
+      attemptedStatus = true;
       consecutiveFailures += 1;
     }
     if (cancelled) return;
+    if (failIfTimedOut()) return;
     const retryMs = Math.min(POLL_MS * 2 ** Math.min(consecutiveFailures, 4), MAX_RETRY_MS);
-    window.setTimeout(loop, retryMs);
+    window.setTimeout(loop, Math.min(retryMs, Math.max(0, deadlineAt - Date.now())));
   };
 
   window.setTimeout(loop, FIRST_POLL_MS);
