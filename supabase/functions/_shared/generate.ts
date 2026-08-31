@@ -25,6 +25,7 @@ type OpenAIResponse = {
   status?: "completed" | "failed" | "in_progress" | "cancelled" | "queued" | "incomplete";
   error?: { message?: string } | null;
   incomplete_details?: { reason?: string } | null;
+  output_text?: string;
   output?: { type?: string; content?: { type?: string; text?: string }[] }[];
 };
 
@@ -42,6 +43,57 @@ const ICON_NAMES = [
   "building", "globe", "star", "heart", "flame", "food", "plane", "pin", "bell",
   "gift", "droplet", "leaf", "car", "cart", "mail", "flag", "code", "panel",
 ];
+
+const WIDGET_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    title: { type: "string", minLength: 1, maxLength: 40 },
+    icon: { type: "string", enum: ICON_NAMES },
+    html: { type: "string", maxLength: 12_000 },
+    script: { type: "string", minLength: 1, maxLength: 40_000 },
+    refreshMs: {
+      anyOf: [
+        { type: "integer", minimum: 60_000 },
+        { type: "null" },
+      ],
+    },
+  },
+  required: ["title", "icon", "html", "script", "refreshMs"],
+} as const;
+
+const QUALITY_PROMPT = [
+  "## Final quality gate (highest priority)",
+  "Build a complete, useful mini-product, not a generic demo. The result must work on first use and feel intentionally designed beside Daybreak's built-in Weather, Stocks, News, and Football cards.",
+  "Before finalizing, silently verify every item below and fix any failure:",
+  "1. Data truth: never ship sample values, guessed endpoints, or a source that web search did not verify. Prefer widget.ai when a stable keyless JSON API is uncertain.",
+  "2. Complete states: every data widget renders useful cached data immediately when available, then has loading, ready, empty, and recoverable error states. A retry control must actually rerun the request.",
+  "3. Native hierarchy: lead with the most decision-useful information, keep secondary metadata quiet, use one clear visual rhythm, and avoid explanatory paragraphs.",
+  "4. Responsive density: widget.cols 1, 2, and 3 must each reveal an appropriate amount of content without empty space or tiny repeated cards.",
+  "5. Interaction: forms have labels or useful placeholders, buttons have explicit types, user input is escaped, settings persist through widget.store, and reruns do not duplicate listeners or content.",
+  "6. Runtime discipline: use only the widget capability object. Never access window, document, storage globals, fetch, dynamic code execution, timers, imports, or external libraries.",
+  "The richer native kit is available when it improves the result: gw-stack for vertical rhythm; gw-grid for responsive metric groups; gw-stat with gw-stat__label, gw-stat__value, and gw-stat__meta; gw-list with gw-item rows; gw-item__main, gw-item__title, gw-item__meta, and gw-item__value for structured lists; gw-progress with gw-progress__fill for bounded progress; gw-segment with gw-segment__button and is-active for compact filters; gw-note for one short supporting sentence. Combine these with gw-hero, gw-row, gw-form, gw-foot, skeleton, empty, pill, and list__toggle.",
+  "Do not imitate a full webpage inside a card. Use the smallest composition that completely solves the request.",
+].join("\n");
+
+function qualityResponseConfig(opts: GenerateOptions): Record<string, unknown> {
+  return {
+    model: opts.model || "gpt-5.6-sol",
+    reasoning: { effort: opts.effort || "high" },
+    max_output_tokens: opts.maxOutputTokens ?? 24_000,
+    max_tool_calls: 6,
+    prompt_cache_key: "daybreak-widget-v3",
+    text: {
+      verbosity: "low",
+      format: {
+        type: "json_schema",
+        name: "daybreak_widget",
+        strict: true,
+        schema: WIDGET_SCHEMA,
+      },
+    },
+  };
+}
 
 const SYSTEM_PROMPT = `You build small dashboard widgets for "Daybreak", a calm personal homepage. Given the user's request, respond with ONLY a single JSON object (no prose, no markdown fences):
 
@@ -130,6 +182,7 @@ Respond with ONLY the JSON object.`;
 
 /** Extract the assistant's final text from a Responses API payload. */
 function outputText(data: OpenAIResponse): string {
+  if (data.output_text) return data.output_text.trim();
   const parts: string[] = [];
   for (const item of data.output ?? []) {
     if (item.type !== "message") continue;
@@ -159,6 +212,50 @@ function parseLooseJSON(text: string): unknown {
   }
 }
 
+const FORBIDDEN_SCRIPT_PATTERNS: { label: string; pattern: RegExp }[] = [
+  { label: "window", pattern: /\bwindow\s*(?:\.|\[)/ },
+  { label: "document", pattern: /\bdocument\s*(?:\.|\[)/ },
+  { label: "browser storage", pattern: /\b(?:localStorage|sessionStorage|indexedDB)\s*(?:\.|\[|\()/ },
+  { label: "direct network access", pattern: /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/ },
+  { label: "dynamic code execution", pattern: /\b(?:eval|Function)\s*\(/ },
+  { label: "timers", pattern: /\b(?:setTimeout|setInterval|requestAnimationFrame)\s*\(/ },
+  { label: "module loading", pattern: /\b(?:import|require)\s*\(/ },
+];
+
+/** Deterministic checks that complement Structured Outputs and model review. */
+export function validateGeneratedWidget(widget: GeneratedWidget): string[] {
+  const issues: string[] = [];
+  const combined = `${widget.html}\n${widget.script}`;
+
+  if (widget.html.length > 12_000) issues.push("HTML is too large");
+  if (widget.script.length > 40_000) issues.push("Script is too large");
+  if (/<(?:script|style|iframe|object|embed|link)\b/i.test(widget.html)) {
+    issues.push("HTML contains a forbidden element");
+  }
+  if (!/\bwidget\./.test(widget.script)) issues.push("Script does not use the widget capability API");
+
+  for (const { label, pattern } of FORBIDDEN_SCRIPT_PATTERNS) {
+    if (pattern.test(widget.script)) issues.push(`Script uses forbidden ${label}`);
+  }
+
+  const usesData = /widget\.(?:getJSON|ai)\s*\(/.test(widget.script);
+  if (usesData) {
+    if (widget.refreshMs == null) issues.push("Data widget has no refresh interval");
+    if (!/skeleton/.test(combined)) issues.push("Data widget has no loading state");
+    if (!/(?:catch\s*\(|catch\s*\{|\.catch\s*\()/.test(widget.script)) {
+      issues.push("Data widget has no recoverable error path");
+    }
+    if (!/(?:retry|try again)/i.test(combined)) issues.push("Data widget has no retry control");
+  }
+  if (/widget\.ai\s*\(/.test(widget.script) && (widget.refreshMs ?? 0) < 3_600_000) {
+    issues.push("AI-backed widget refreshes more often than once per hour");
+  }
+  if (/#[0-9a-f]{3,8}\b|\brgba?\s*\(/i.test(combined)) {
+    issues.push("Widget uses hard-coded colors instead of design tokens");
+  }
+  return issues;
+}
+
 function responseBody(prompt: string, opts: GenerateOptions, background: boolean): Record<string, unknown> {
   return {
     // Background mode lets the model work for several minutes without being
@@ -166,12 +263,13 @@ function responseBody(prompt: string, opts: GenerateOptions, background: boolean
     model: opts.model || "gpt-5",
     reasoning: { effort: opts.effort || "medium" },
     tools: [{ type: "web_search" }],
-    instructions: SYSTEM_PROMPT,
+    instructions: SYSTEM_PROMPT + "\n\n" + QUALITY_PROMPT,
     input: `Build this widget: ${prompt}`,
     // Reasoning tokens count against this budget, so keep it generous — a
     // tight cap truncates the final JSON and yields a half-written script.
     max_output_tokens: opts.maxOutputTokens ?? 16000,
     ...(background ? { background: true, store: true } : {}),
+    ...qualityResponseConfig(opts),
   };
 }
 
@@ -255,7 +353,7 @@ function parseCompletedResponse(data: OpenAIResponse): GeneratedWidget {
     }
   }
 
-  return {
+  const candidate: GeneratedWidget = {
     title: spec.title.trim().slice(0, 40),
     icon:
       typeof spec.icon === "string" && ICON_NAMES.includes(spec.icon.trim().toLowerCase())
@@ -268,6 +366,12 @@ function parseCompletedResponse(data: OpenAIResponse): GeneratedWidget {
         ? Math.max(60_000, Math.round(spec.refreshMs))
         : null,
   };
+  const qualityIssues = validateGeneratedWidget(candidate);
+  if (qualityIssues.length) {
+    throw new Error(`The generated widget failed quality checks: ${qualityIssues.join("; ")}. Try again.`);
+  }
+
+  return candidate;
 }
 
 /** Retrieve an OpenAI background response and normalize it for job polling. */
