@@ -25,14 +25,14 @@ export async function startGeneration(prompt: string): Promise<string> {
 }
 
 type JobStatus =
-  | { status: "pending" }
+  | { status: "pending"; stage?: "build" | "review" }
   | { status: "done"; widget: GeneratedWidget }
   | { status: "error"; error: string };
 
 async function fetchStatus(jobId: string): Promise<JobStatus> {
   const res = await fetch(`${fnUrl("widget-status")}?id=${encodeURIComponent(jobId)}`, {
     headers: fnHeaders(),
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(60_000),
   });
   const data = (await res.json().catch(() => ({}))) as JobStatus & { error?: string };
   if (res.status === 404) {
@@ -57,7 +57,11 @@ const MAX_RETRY_MS = 30_000;
 export function pollJob(
   jobId: string,
   deadlineAt: number,
-  cbs: { onDone: (widget: GeneratedWidget) => void; onError: (message: string) => void },
+  cbs: {
+    onDone: (widget: GeneratedWidget) => void;
+    onError: (message: string) => void;
+    onProgress?: (stage: "build" | "review") => void;
+  },
 ): () => void {
   let cancelled = false;
   let consecutiveFailures = 0;
@@ -79,6 +83,7 @@ export function pollJob(
       consecutiveFailures = 0;
       if (s.status === "done") return cbs.onDone(s.widget);
       if (s.status === "error") return cbs.onError(s.error);
+      cbs.onProgress?.(s.stage ?? "build");
     } catch {
       attemptedStatus = true;
       consecutiveFailures += 1;

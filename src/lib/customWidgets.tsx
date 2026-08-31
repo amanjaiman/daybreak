@@ -29,6 +29,8 @@ export type CustomWidget = {
   jobId?: string;
   /** When the current generation attempt began, used to stop stale pollers. */
   generationStartedAt?: number;
+  /** Current backend pass, shown in the placeholder while the job runs. */
+  generationStage?: "build" | "review";
   /** Message shown when generation itself failed (status === "error"). */
   genError?: string;
   title: string;
@@ -111,6 +113,7 @@ export function CustomWidgetsProvider({ children }: { children: ReactNode }) {
       refreshMs: null,
       createdAt: Date.now(),
       generationStartedAt: Date.now(),
+      generationStage: "build",
     };
     setWidgets((all) => [...all, widget]);
     // Surface the new placeholder at the top of the emptiest column.
@@ -123,7 +126,7 @@ export function CustomWidgetsProvider({ children }: { children: ReactNode }) {
     const widget = widgets.find((w) => w.id === id);
     if (!widget) return;
     const generationStartedAt = Date.now();
-    patch(id, { generationStartedAt });
+    patch(id, { generationStartedAt, generationStage: "build" });
     patch(id, { status: "pending", jobId: undefined, genError: undefined, title: "Generating…", icon: "panel" });
     try {
       const jobId = await startGeneration(widget.prompt);
@@ -149,13 +152,14 @@ export function CustomWidgetsProvider({ children }: { children: ReactNode }) {
       if (w.status !== "pending" || !w.jobId || pollers.current.has(w.jobId)) continue;
       const { id, jobId } = w;
       const cancel = pollJob(jobId, generationDeadline(w.generationStartedAt ?? w.createdAt), {
+        onProgress: (generationStage) => patch(id, { generationStage }),
         onDone: (spec) => {
           pollers.current.delete(jobId);
-          patch(id, { ...spec, status: "ready", jobId: undefined, genError: undefined });
+          patch(id, { ...spec, status: "ready", jobId: undefined, generationStage: undefined, genError: undefined });
         },
         onError: (message) => {
           pollers.current.delete(jobId);
-          patch(id, { status: "error", jobId: undefined, genError: message });
+          patch(id, { status: "error", jobId: undefined, generationStage: undefined, genError: message });
         },
       });
       pollers.current.set(jobId, cancel);

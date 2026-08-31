@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { getWidgetGeneration, startWidgetGeneration } from './supabase/functions/_shared/generate.ts'
+import {
+  getWidgetGeneration,
+  startWidgetGeneration,
+  startWidgetReview,
+} from './supabase/functions/_shared/generate.ts'
+import type { GeneratedWidget } from './supabase/functions/_shared/generate.ts'
 import { fetchWidgetData } from './supabase/functions/_shared/widget-data.ts'
 import { proxyJSON } from './netlify/functions/proxy.ts'
 
@@ -112,11 +117,15 @@ function unfurlPlugin(): Plugin {
 // — so local dev needs only OPENAI_API_KEY, no Supabase. The key comes from
 // .env (gitignored) or the shell environment.
 type DevJob =
-  | { status: 'pending'; responseId: string }
+  | { status: 'pending'; responseId: string; prompt: string; stage: 'build' | 'review'; draft?: GeneratedWidget }
   | { status: 'done'; result: unknown }
   | { status: 'error'; error: string }
 
-function generateWidgetPlugin(apiKey: string | undefined, opts: { model?: string; effort?: string }): Plugin {
+function generateWidgetPlugin(
+  apiKey: string | undefined,
+  opts: { model?: string; effort?: string },
+  reviewOpts: { model?: string; effort?: string },
+): Plugin {
   const jobs = new Map<string, DevJob>()
   return {
     name: 'daybreak-generate-widget',
@@ -153,7 +162,7 @@ function generateWidgetPlugin(apiKey: string | undefined, opts: { model?: string
           })
         }
         const jobId = crypto.randomUUID()
-        jobs.set(jobId, { status: 'pending', responseId })
+        jobs.set(jobId, { status: 'pending', responseId, prompt: prompt.trim(), stage: 'build' })
         respond(202, { jobId })
       })
 
@@ -178,10 +187,30 @@ function generateWidgetPlugin(apiKey: string | undefined, opts: { model?: string
         } catch {
           return respond(503, { error: 'Generation status is temporarily unavailable.' })
         }
-        if (generation.status === 'pending') return respond(200, generation)
+        if (generation.status === 'pending') return respond(200, { ...generation, stage: job.stage })
+        if (generation.status === 'done' && job.stage === 'build') {
+          try {
+            const responseId = await startWidgetReview(job.prompt, generation.widget, apiKey, reviewOpts)
+            jobs.set(id, {
+              status: 'pending',
+              responseId,
+              prompt: job.prompt,
+              stage: 'review',
+              draft: generation.widget,
+            })
+            return respond(200, { status: 'pending', stage: 'review' })
+          } catch {
+            jobs.set(id, { status: 'done', result: generation.widget })
+            return respond(200, { status: 'done', widget: generation.widget, reviewFallback: true })
+          }
+        }
         if (generation.status === 'done') {
           jobs.set(id, { status: 'done', result: generation.widget })
-          return respond(200, { status: 'done', widget: generation.widget })
+          return respond(200, { status: 'done', widget: generation.widget, reviewed: true })
+        }
+        if (job.stage === 'review' && job.draft) {
+          jobs.set(id, { status: 'done', result: job.draft })
+          return respond(200, { status: 'done', widget: job.draft, reviewFallback: true })
         }
         jobs.set(id, { status: 'error', error: generation.error })
         respond(200, generation)
@@ -254,12 +283,21 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const openaiKey = envFileValue('OPENAI_API_KEY') ?? env.OPENAI_API_KEY
   const genOpts = { model: env.OPENAI_MODEL || undefined, effort: env.OPENAI_REASONING_EFFORT || undefined }
+  const reviewOpts = {
+    model: env.OPENAI_REVIEW_MODEL || env.OPENAI_MODEL || undefined,
+    effort: env.OPENAI_REVIEW_REASONING_EFFORT || undefined,
+  }
   const dataOpts = {
     model: env.OPENAI_DATA_MODEL || env.OPENAI_MODEL || undefined,
     effort: env.OPENAI_DATA_REASONING_EFFORT || undefined,
   }
   return {
-    plugins: [react(), unfurlPlugin(), generateWidgetPlugin(openaiKey, genOpts), widgetDataPlugin(openaiKey, dataOpts)],
+    plugins: [
+      react(),
+      unfurlPlugin(),
+      generateWidgetPlugin(openaiKey, genOpts, reviewOpts),
+      widgetDataPlugin(openaiKey, dataOpts),
+    ],
     server: {
       // Honor a PORT assigned by the environment (e.g. preview tooling).
       port: process.env.PORT ? Number(process.env.PORT) : undefined,
