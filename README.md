@@ -73,6 +73,12 @@ How it fits together:
   browser's localStorage. Cores in
   [`supabase/functions/_shared/`](supabase/functions/_shared) are plain
   `fetch`-only TS so the Vite dev middleware runs the same code in-process.
+- Generated scripts execute in an opaque-origin iframe with a restrictive CSP
+  (`connect-src 'none'`) rather than in the Daybreak page. The frame can only
+  render its own card. Persistence, public JSON requests, live AI data, theme
+  tokens, sizing, and refreshes cross a versioned message bridge that validates
+  the caller and capability; the frame cannot read Daybreak localStorage,
+  cookies, or page globals, and each rerun replaces it to stop old timers.
 - The one server helper still on Netlify is
   [`netlify/functions/proxy.ts`](netlify/functions/proxy.ts) — the JSON CORS
   fallback behind `widget.getJSON(...)` (a fast fetch with no timeout concern).
