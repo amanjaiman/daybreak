@@ -11,6 +11,7 @@ test("generated widget sandbox", async (t) => {
     assert.match(document, /id="widget-root" class="gw-root"/);
     assert.match(document, /daybreak-widget-v1/);
     assert.match(document, /new Function/);
+    assert.match(document, /addEventListener\("submit", \(event\) => event\.preventDefault\(\), true\)/);
   });
 
   await t.test("escapes attempted closing tags in embedded styles", () => {

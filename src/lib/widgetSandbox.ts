@@ -178,6 +178,10 @@ function widgetSandboxRuntime() {
     const nextCols = window.innerWidth >= 900 ? 3 : window.innerWidth >= 560 ? 2 : 1;
     if (activeRunId >= 0 && nextCols !== currentCols) send("refresh");
   });
+  // Generated forms are application controls, never navigation. Cancel the
+  // browser's native submit in the capture phase so widget handlers still run
+  // without requiring the iframe's broader `allow-forms` sandbox permission.
+  document.addEventListener("submit", (event) => event.preventDefault(), true);
   document.addEventListener("click", (event) => {
     const target = event.target as Element | null;
     if (target?.closest("a")) event.preventDefault();
