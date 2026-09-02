@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   getWidgetGeneration,
   startWidgetGeneration,
-  startWidgetReview,
+  startWidgetRepair,
   validateGeneratedWidget,
 } from "../supabase/functions/_shared/generate.ts";
 
@@ -26,9 +26,11 @@ test("background widget generation lifecycle", async (t) => {
     assert.equal(body.background, true);
     assert.equal(body.store, true);
     assert.equal(body.model, "gpt-5.6-sol");
-    assert.equal(body.reasoning.effort, "high");
-    assert.equal(body.max_tool_calls, 6);
-    assert.equal(body.prompt_cache_key, "daybreak-widget-v3-build");
+    assert.equal(body.reasoning.effort, "medium");
+    assert.equal(body.max_output_tokens, 12_000);
+    assert.equal(body.max_tool_calls, 2);
+    assert.equal(body.prompt_cache_key, "daybreak-widget-v4-build");
+    assert.match(body.instructions, /Do not search for current values/);
     assert.equal(body.text.verbosity, "low");
     assert.equal(body.text.format.type, "json_schema");
     assert.equal(body.text.format.strict, true);
@@ -61,11 +63,11 @@ test("background widget generation lifecycle", async (t) => {
     assert.ok(issues.includes("HTML contains a forbidden element"));
   });
 
-  await t.test("starts an independent structured review pass", async () => {
+  await t.test("starts a narrow tool-free repair only for listed failures", async () => {
     let request;
     globalThis.fetch = async (url, init) => {
       request = { url, init };
-      return Response.json({ id: "resp_review", status: "queued" });
+      return Response.json({ id: "resp_repair", status: "queued" });
     };
     const draft = {
       title: "Birthdays",
@@ -75,13 +77,21 @@ test("background widget generation lifecycle", async (t) => {
       refreshMs: null,
     };
 
-    assert.equal(await startWidgetReview("Track birthdays", draft, "test-key"), "resp_review");
+    assert.equal(
+      await startWidgetRepair("Track birthdays", draft, ["Data widget has no retry control"], "test-key"),
+      "resp_repair",
+    );
     const body = JSON.parse(request.init.body);
     assert.equal(body.background, true);
-    assert.equal(body.prompt_cache_key, "daybreak-widget-v3-review");
+    assert.equal(body.prompt_cache_key, "daybreak-widget-v4-repair");
+    assert.equal(body.reasoning.effort, "medium");
+    assert.equal(body.max_output_tokens, 10_000);
+    assert.equal(body.tools, undefined);
+    assert.equal(body.max_tool_calls, undefined);
     assert.equal(body.text.format.type, "json_schema");
-    assert.match(body.instructions, /Independent review pass/);
+    assert.match(body.instructions, /Targeted repair/);
     assert.match(body.input, /Original request:\nTrack birthdays/);
+    assert.match(body.input, /Data widget has no retry control/);
     assert.match(body.input, /Candidate widget:/);
   });
 
@@ -137,6 +147,27 @@ test("background widget generation lifecycle", async (t) => {
         refreshMs: 60_000,
       },
     });
+  });
+
+  await t.test("returns a structured candidate for one repair when checks fail", async () => {
+    const spec = {
+      title: "Rates",
+      icon: "money",
+      html: '<div class="gw-hero"></div>',
+      script: "widget.getJSON('https://example.com/rates').then(render);",
+      refreshMs: null,
+    };
+    globalThis.fetch = async () =>
+      Response.json({
+        id: "resp_invalid",
+        status: "completed",
+        output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(spec) }] }],
+      });
+
+    const result = await getWidgetGeneration("resp_invalid", "test-key");
+    assert.equal(result.status, "invalid");
+    assert.deepEqual(result.status === "invalid" ? result.widget : null, spec);
+    assert.ok(result.status === "invalid" && result.issues.includes("Data widget has no refresh interval"));
   });
 
   await t.test("surfaces terminal OpenAI failures", async () => {

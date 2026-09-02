@@ -5,9 +5,8 @@ import react from '@vitejs/plugin-react'
 import {
   getWidgetGeneration,
   startWidgetGeneration,
-  startWidgetReview,
+  startWidgetRepair,
 } from './supabase/functions/_shared/generate.ts'
-import type { GeneratedWidget } from './supabase/functions/_shared/generate.ts'
 import { fetchWidgetData } from './supabase/functions/_shared/widget-data.ts'
 import { proxyJSON } from './netlify/functions/proxy.ts'
 
@@ -117,14 +116,14 @@ function unfurlPlugin(): Plugin {
 // — so local dev needs only OPENAI_API_KEY, no Supabase. The key comes from
 // .env (gitignored) or the shell environment.
 type DevJob =
-  | { status: 'pending'; responseId: string; prompt: string; stage: 'build' | 'review'; draft?: GeneratedWidget }
+  | { status: 'pending'; responseId: string; prompt: string; stage: 'build' | 'review' }
   | { status: 'done'; result: unknown }
   | { status: 'error'; error: string }
 
 function generateWidgetPlugin(
   apiKey: string | undefined,
   opts: { model?: string; effort?: string },
-  reviewOpts: { model?: string; effort?: string },
+  repairOpts: { model?: string; effort?: string },
 ): Plugin {
   const jobs = new Map<string, DevJob>()
   return {
@@ -188,29 +187,36 @@ function generateWidgetPlugin(
           return respond(503, { error: 'Generation status is temporarily unavailable.' })
         }
         if (generation.status === 'pending') return respond(200, { ...generation, stage: job.stage })
-        if (generation.status === 'done' && job.stage === 'build') {
+        if (generation.status === 'invalid' && job.stage === 'build') {
           try {
-            const responseId = await startWidgetReview(job.prompt, generation.widget, apiKey, reviewOpts)
+            const responseId = await startWidgetRepair(
+              job.prompt,
+              generation.widget,
+              generation.issues,
+              apiKey,
+              repairOpts,
+            )
             jobs.set(id, {
               status: 'pending',
               responseId,
               prompt: job.prompt,
               stage: 'review',
-              draft: generation.widget,
             })
             return respond(200, { status: 'pending', stage: 'review' })
-          } catch {
-            jobs.set(id, { status: 'done', result: generation.widget })
-            return respond(200, { status: 'done', widget: generation.widget, reviewFallback: true })
+          } catch (err) {
+            const error = err instanceof Error ? err.message : 'Widget repair failed to start'
+            jobs.set(id, { status: 'error', error })
+            return respond(200, { status: 'error', error })
           }
+        }
+        if (generation.status === 'invalid') {
+          const error = `The generated widget still failed quality checks: ${generation.issues.join('; ')}. Try again.`
+          jobs.set(id, { status: 'error', error })
+          return respond(200, { status: 'error', error })
         }
         if (generation.status === 'done') {
           jobs.set(id, { status: 'done', result: generation.widget })
-          return respond(200, { status: 'done', widget: generation.widget, reviewed: true })
-        }
-        if (job.stage === 'review' && job.draft) {
-          jobs.set(id, { status: 'done', result: job.draft })
-          return respond(200, { status: 'done', widget: job.draft, reviewFallback: true })
+          return respond(200, { status: 'done', widget: generation.widget, repaired: job.stage === 'review' })
         }
         jobs.set(id, { status: 'error', error: generation.error })
         respond(200, generation)
@@ -283,9 +289,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const openaiKey = envFileValue('OPENAI_API_KEY') ?? env.OPENAI_API_KEY
   const genOpts = { model: env.OPENAI_MODEL || undefined, effort: env.OPENAI_REASONING_EFFORT || undefined }
-  const reviewOpts = {
-    model: env.OPENAI_REVIEW_MODEL || env.OPENAI_MODEL || undefined,
-    effort: env.OPENAI_REVIEW_REASONING_EFFORT || undefined,
+  const repairOpts = {
+    model: env.OPENAI_REPAIR_MODEL || env.OPENAI_REVIEW_MODEL || env.OPENAI_MODEL || undefined,
+    effort: env.OPENAI_REPAIR_REASONING_EFFORT || env.OPENAI_REVIEW_REASONING_EFFORT || undefined,
   }
   const dataOpts = {
     model: env.OPENAI_DATA_MODEL || env.OPENAI_MODEL || undefined,
@@ -295,7 +301,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       unfurlPlugin(),
-      generateWidgetPlugin(openaiKey, genOpts, reviewOpts),
+      generateWidgetPlugin(openaiKey, genOpts, repairOpts),
       widgetDataPlugin(openaiKey, dataOpts),
     ],
     server: {

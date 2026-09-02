@@ -32,6 +32,7 @@ type OpenAIResponse = {
 export type WidgetGenerationStatus =
   | { status: "pending" }
   | { status: "done"; widget: GeneratedWidget }
+  | { status: "invalid"; widget: GeneratedWidget; issues: string[] }
   | { status: "error"; error: string };
 
 // The flat icon names a generated widget can wear, matching the built-in
@@ -66,7 +67,7 @@ const QUALITY_PROMPT = [
   "## Final quality gate (highest priority)",
   "Build a complete, useful mini-product, not a generic demo. The result must work on first use and feel intentionally designed beside Daybreak's built-in Weather, Stocks, News, and Football cards.",
   "Before finalizing, silently verify every item below and fix any failure:",
-  "1. Data truth: never ship sample values, guessed endpoints, or a source that web search did not verify. Prefer widget.ai when a stable keyless JSON API is uncertain.",
+  "1. Data truth: never ship sample values or guessed endpoints. Verify an unknown widget.getJSON endpoint with web search; widget.ai fetches current values later at runtime, so never search for those values during generation.",
   "2. Complete states: every data widget renders useful cached data immediately when available, then has loading, ready, empty, and recoverable error states. A retry control must actually rerun the request.",
   "3. Native hierarchy: lead with the most decision-useful information, keep secondary metadata quiet, use one clear visual rhythm, and avoid explanatory paragraphs.",
   "4. Responsive density: widget.cols 1, 2, and 3 must each reveal an appropriate amount of content without empty space or tiny repeated cards.",
@@ -76,21 +77,20 @@ const QUALITY_PROMPT = [
   "Do not imitate a full webpage inside a card. Use the smallest composition that completely solves the request.",
 ].join("\n");
 
-const REVIEW_PROMPT = [
-  "## Independent review pass",
-  "You are the senior engineer and product designer responsible for the final publish decision.",
-  "Review the candidate against the original request, every quality-gate item, the runtime contract, and the native Daybreak visual language.",
-  "Use web search again when the candidate depends on public data, and correct any unverified source, endpoint, field assumption, or stale-data behavior.",
-  "Return a complete replacement widget, not review notes. Preserve good work, but rewrite any markup or script needed to make the result genuinely useful, resilient, polished, and responsive.",
+const REPAIR_PROMPT = [
+  "## Targeted repair",
+  "The candidate failed deterministic checks. Correct every listed issue and return a complete replacement widget, not notes.",
+  "Preserve the candidate's useful behavior and design. Change only what is necessary to satisfy the original request, quality gate, runtime contract, and listed failures.",
+  "Do not use web search during repair; retain a verified getJSON source or switch an uncertain source to widget.ai.",
 ].join("\n");
 
-function qualityResponseConfig(opts: GenerateOptions, stage: "build" | "review"): Record<string, unknown> {
+function qualityResponseConfig(opts: GenerateOptions, stage: "build" | "repair"): Record<string, unknown> {
   return {
     model: opts.model || "gpt-5.6-sol",
-    reasoning: { effort: opts.effort || "high" },
-    max_output_tokens: opts.maxOutputTokens ?? 24_000,
-    max_tool_calls: 6,
-    prompt_cache_key: `daybreak-widget-v3-${stage}`,
+    reasoning: { effort: opts.effort || "medium" },
+    max_output_tokens: opts.maxOutputTokens ?? (stage === "build" ? 12_000 : 10_000),
+    ...(stage === "build" ? { max_tool_calls: 2 } : {}),
+    prompt_cache_key: `daybreak-widget-v4-${stage}`,
     text: {
       verbosity: "low",
       format: {
@@ -118,7 +118,7 @@ Pick the ONE name that best fits the widget from this list — it renders as a f
 ${ICON_NAMES.join(", ")}
 Examples: a politics/news widget -> "building" or "news"; gas or crypto prices -> "money" or "chart"; a birthdays tracker -> "calendar"; a sports standings widget -> "trophy".
 
-You have a web_search tool. USE IT before you finalize the spec whenever the widget touches real-world data: to confirm which data source to use, that an API endpoint actually exists and returns the fields you rely on, and what the current values look like. Never guess an endpoint from memory — a widget wired to a URL that 404s is a failed widget.
+You have a web_search tool, but generation should usually need no tool call. Use it ONLY when you choose widget.getJSON with an endpoint outside the verified examples below: confirm that the endpoint exists and returns the fields you rely on. Do not search for manual-entry widgets. Do not search for current values, news, rankings, schedules, prices, or recommendations that widget.ai will fetch later at runtime. Never guess an endpoint from memory — when uncertain, use widget.ai instead.
 
 ## The widget API
 Your script receives one argument named \`widget\`:
@@ -270,19 +270,19 @@ function responseBody(
   prompt: string,
   opts: GenerateOptions,
   background: boolean,
-  reviewDraft?: GeneratedWidget,
+  repairDraft?: GeneratedWidget,
+  repairIssues: string[] = [],
 ): Record<string, unknown> {
-  const stage = reviewDraft ? "review" : "build";
+  const stage = repairDraft ? "repair" : "build";
   return {
     // Background mode lets the model work for several minutes without being
     // tied to a Supabase Edge Function worker's wall-clock lifetime.
     model: opts.model || "gpt-5",
     reasoning: { effort: opts.effort || "medium" },
-    tools: [{ type: "web_search" }],
-    instructions:
-      SYSTEM_PROMPT + "\n\n" + QUALITY_PROMPT + (reviewDraft ? "\n\n" + REVIEW_PROMPT : ""),
-    input: reviewDraft
-      ? `Original request:\n${prompt}\n\nCandidate widget:\n${JSON.stringify(reviewDraft)}`
+    ...(stage === "build" ? { tools: [{ type: "web_search" }] } : {}),
+    instructions: SYSTEM_PROMPT + "\n\n" + QUALITY_PROMPT + (repairDraft ? "\n\n" + REPAIR_PROMPT : ""),
+    input: repairDraft
+      ? `Original request:\n${prompt}\n\nFailed checks:\n${repairIssues.map((issue) => `- ${issue}`).join("\n")}\n\nCandidate widget:\n${JSON.stringify(repairDraft)}`
       : `Build this widget: ${prompt}`,
     // Reasoning tokens count against this budget, so keep it generous — a
     // tight cap truncates the final JSON and yields a half-written script.
@@ -297,7 +297,8 @@ async function createResponse(
   apiKey: string,
   opts: GenerateOptions = {},
   background = false,
-  reviewDraft?: GeneratedWidget,
+  repairDraft?: GeneratedWidget,
+  repairIssues: string[] = [],
 ): Promise<OpenAIResponse> {
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -305,7 +306,7 @@ async function createResponse(
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(responseBody(prompt, opts, background, reviewDraft)),
+    body: JSON.stringify(responseBody(prompt, opts, background, repairDraft, repairIssues)),
   });
 
   if (!res.ok) {
@@ -327,15 +328,16 @@ export async function startWidgetGeneration(
   return data.id;
 }
 
-/** Start a second durable response that critiques and improves a valid draft. */
-export async function startWidgetReview(
+/** Start a second durable response only when deterministic checks reject a build. */
+export async function startWidgetRepair(
   prompt: string,
   draft: GeneratedWidget,
+  issues: string[],
   apiKey: string,
   opts: GenerateOptions = {},
 ): Promise<string> {
-  const data = await createResponse(prompt, apiKey, opts, true, draft);
-  if (!data.id) throw new Error("OpenAI didn't return a review response id");
+  const data = await createResponse(prompt, apiKey, opts, true, draft, issues);
+  if (!data.id) throw new Error("OpenAI didn't return a repair response id");
   return data.id;
 }
 
@@ -356,7 +358,7 @@ async function retrieveResponse(responseId: string, apiKey: string): Promise<Ope
   return (await res.json()) as OpenAIResponse;
 }
 
-function parseCompletedResponse(data: OpenAIResponse): GeneratedWidget {
+function parseCompletedResponse(data: OpenAIResponse): { widget: GeneratedWidget; issues: string[] } {
   // A truncated response (hit the token budget) would leave the script cut off
   // mid-statement; fail loudly so the job retries instead of storing a broken
   // widget that throws "Unexpected end of input" when it runs.
@@ -370,20 +372,6 @@ function parseCompletedResponse(data: OpenAIResponse): GeneratedWidget {
   const spec = parseLooseJSON(content) as Partial<GeneratedWidget>;
   if (typeof spec.title !== "string" || !spec.title.trim()) throw new Error("Widget spec is missing a title");
   if (typeof spec.script !== "string" || !spec.script.trim()) throw new Error("Widget spec is missing a script");
-
-  // Reject a script that isn't valid JavaScript before it can become a widget.
-  // The client runs it as new Function("widget", '"use strict";\n' + script),
-  // so compile it the same way here — this catches truncated or malformed code
-  // at generation time (a clean, retryable error) instead of at runtime. Only a
-  // real SyntaxError rejects; if a locked-down runtime forbids new Function at
-  // all (a different error), skip and lean on the truncation guards above.
-  try {
-    new Function("widget", `"use strict";\n${spec.script}`);
-  } catch (err) {
-    if (err instanceof SyntaxError) {
-      throw new Error(`The generated widget code was invalid (${err.message}). Try again.`);
-    }
-  }
 
   const candidate: GeneratedWidget = {
     title: spec.title.trim().slice(0, 40),
@@ -399,11 +387,16 @@ function parseCompletedResponse(data: OpenAIResponse): GeneratedWidget {
         : null,
   };
   const qualityIssues = validateGeneratedWidget(candidate);
-  if (qualityIssues.length) {
-    throw new Error(`The generated widget failed quality checks: ${qualityIssues.join("; ")}. Try again.`);
+
+  // Compile exactly as the client does. A syntactically invalid but otherwise
+  // structured candidate can be repaired once instead of failing outright.
+  try {
+    new Function("widget", `"use strict";\n${candidate.script}`);
+  } catch (err) {
+    if (err instanceof SyntaxError) qualityIssues.unshift(`Script is invalid JavaScript (${err.message})`);
   }
 
-  return candidate;
+  return { widget: candidate, issues: qualityIssues };
 }
 
 /** Retrieve an OpenAI background response and normalize it for job polling. */
@@ -433,7 +426,8 @@ export async function getWidgetGeneration(
   }
 
   try {
-    return { status: "done", widget: parseCompletedResponse(data) };
+    const parsed = parseCompletedResponse(data);
+    return parsed.issues.length ? { status: "invalid", ...parsed } : { status: "done", widget: parsed.widget };
   } catch (err) {
     return {
       status: "error",
