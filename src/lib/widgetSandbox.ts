@@ -178,10 +178,53 @@ function widgetSandboxRuntime() {
     const nextCols = window.innerWidth >= 900 ? 3 : window.innerWidth >= 560 ? 2 : 1;
     if (activeRunId >= 0 && nextCols !== currentCols) send("refresh");
   });
-  document.addEventListener("click", (event) => {
-    const target = event.target as Element | null;
-    if (target?.closest("a")) event.preventDefault();
-  });
+  // Generated forms are application controls, never navigation. A browser can
+  // enforce the iframe's sandboxed-forms flag before it dispatches `submit`,
+  // so intercept every native entry point first and dispatch the application
+  // event ourselves. Widget handlers still run; navigation never starts.
+  const dispatchingForms = new WeakSet<HTMLFormElement>();
+  const dispatchAppSubmit = (form: HTMLFormElement, submitter: HTMLElement | null = null) => {
+    if (dispatchingForms.has(form)) return;
+    dispatchingForms.add(form);
+    try {
+      form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true, submitter }));
+    } finally {
+      dispatchingForms.delete(form);
+    }
+  };
+  HTMLFormElement.prototype.submit = function () {
+    dispatchAppSubmit(this);
+  };
+  HTMLFormElement.prototype.requestSubmit = function (submitter?: HTMLElement | null) {
+    dispatchAppSubmit(this, submitter ?? null);
+  };
+  document.addEventListener("submit", (event) => event.preventDefault(), true);
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target as Element | null;
+      if (target?.closest("a")) event.preventDefault();
+      const submitter = target?.closest(
+        'button:not([type]), button[type="submit"], input[type="submit"], input[type="image"]',
+      ) as HTMLElement | null;
+      const form = submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement ? submitter.form : null;
+      if (!form) return;
+      event.preventDefault();
+      queueMicrotask(() => dispatchAppSubmit(form, submitter));
+    },
+    true,
+  );
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      const input = event.target instanceof HTMLInputElement ? event.target : null;
+      if (event.key !== "Enter" || !input?.form) return;
+      event.preventDefault();
+      const form = input.form;
+      queueMicrotask(() => dispatchAppSubmit(form));
+    },
+    true,
+  );
 
   const reportHeight = () => send("height", { value: Math.ceil(document.documentElement.scrollHeight) });
   new ResizeObserver(reportHeight).observe(root);
