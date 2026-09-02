@@ -71,7 +71,7 @@ const QUALITY_PROMPT = [
   "2. Complete states: every data widget renders useful cached data immediately when available, then has loading, ready, empty, and recoverable error states. A retry control must actually rerun the request.",
   "3. Native hierarchy: lead with the most decision-useful information, keep secondary metadata quiet, use one clear visual rhythm, and avoid explanatory paragraphs.",
   "4. Responsive density: widget.cols 1, 2, and 3 must each reveal an appropriate amount of content without empty space or tiny repeated cards.",
-  "5. Interaction: forms have labels or useful placeholders, buttons have explicit types, user input is escaped, settings persist through widget.store, and reruns do not duplicate listeners or content.",
+  "5. Interaction: wire every control through delegated widget.on handlers, forms have labels or useful placeholders plus a submit button, buttons have explicit types, user input is escaped, settings persist through widget.store, and rerenders do not break listeners.",
   "6. Runtime discipline: use only the widget capability object. Never access window, document, storage globals, fetch, dynamic code execution, timers, imports, or external libraries.",
   "The richer native kit is available when it improves the result: gw-stack for vertical rhythm; gw-grid for responsive metric groups; gw-stat with gw-stat__label, gw-stat__value, and gw-stat__meta; gw-list with gw-item rows; gw-item__main, gw-item__title, gw-item__meta, and gw-item__value for structured lists; gw-progress with gw-progress__fill for bounded progress; gw-segment with gw-segment__button and is-active for compact filters; gw-note for one short supporting sentence. Combine these with gw-hero, gw-row, gw-form, gw-foot, skeleton, empty, pill, and list__toggle.",
   "Do not imitate a full webpage inside a card. Use the smallest composition that completely solves the request.",
@@ -90,7 +90,7 @@ function qualityResponseConfig(opts: GenerateOptions, stage: "build" | "repair")
     reasoning: { effort: opts.effort || "medium" },
     max_output_tokens: opts.maxOutputTokens ?? (stage === "build" ? 12_000 : 10_000),
     ...(stage === "build" ? { max_tool_calls: 2 } : {}),
-    prompt_cache_key: `daybreak-widget-v4-${stage}`,
+    prompt_cache_key: `daybreak-widget-v5-${stage}`,
     text: {
       verbosity: "low",
       format: {
@@ -122,7 +122,7 @@ You have a web_search tool, but generation should usually need no tool call. Use
 
 ## The widget API
 Your script receives one argument named \`widget\`:
-- \`widget.root\` — the HTMLElement your html was stamped into. Render and attach event listeners here.
+- \`widget.root\` — the HTMLElement your html was stamped into. Render markup here; wire interactions only through \`widget.on\`.
 - \`widget.cols\` — how many columns wide the card is right now: 1, 2, or 3 (the user can resize it). Your script is re-run automatically when this changes, so read it each run and render MORE content when it's bigger. See "Fill the width" below.
 - \`widget.store.get()\` / \`widget.store.set(value)\` — persistent JSON storage private to this widget. This is the ONLY persistence allowed; never touch localStorage directly.
 - \`widget.getJSON(url)\` — fetch a URL and parse JSON (throws on non-2xx). CORS is handled for you: cross-origin failures automatically retry through a server-side proxy, so ANY keyless public JSON API works.
@@ -133,16 +133,20 @@ Your script receives one argument named \`widget\`:
 
 The script runs in a network-isolated, opaque-origin iframe. It cannot access the Daybreak page, browser storage, cookies, page globals, or the network directly. Use ONLY the widget capabilities above. Do not emit images or other remote media; generated widget bodies are compact, text-and-data UI built from the Daybreak kit.
 
+## Interaction contract
+\`widget.on(eventName, selector, handler)\` is the ONLY way to wire controls. It uses delegation, so controls keep working after root.innerHTML is replaced. The handler receives \`(event, matchedElement)\`. Use it for every click, submit, change, input, or keyboard interaction. Never call addEventListener or assign onclick/onchange yourself. Register each handler exactly once per script run, outside render functions. Every form must include an explicit \`type="submit"\` button.
+
 ## Getting data — make the widget as smart as the built-in ones
 The built-in cards (weather, news, stocks) fetch real data automatically; generated widgets must feel the same. Pick the FIRST workable option:
 1. \`widget.getJSON(url)\` for data with a free, keyless public JSON API you have VERIFIED with web_search exists and is CORS-friendly or works through the proxy (e.g. open-meteo.com weather + geocoding, frankfurter.dev FX, api.coingecko.com crypto, hacker-news.firebaseio.com). Confirm the exact path and response shape before relying on it. Do NOT use Reddit, Twitter/X, Instagram, Facebook, or other social/consumer sites as JSON APIs — they block server-side requests and rate-limit by IP, so they fail even through the proxy.
 2. \`widget.ai(request)\` for real-world data with NO reliable keyless API. This is the RIGHT choice for: current news and headlines, top-N rankings, local prices (gas, groceries, rent), schedules, release dates, standings, statistics, and recommendations. News and "what's happening now" ALWAYS go here, never getJSON. The request must state the data needed AND the exact JSON shape, e.g.: 'The top 15 U.S. political news headlines right now. Respond ONLY with JSON: {"items": [{"headline": string (under 80 chars), "source": string (short outlet name)}], "asOf": "YYYY-MM-DD"}'. For lists, request up to 15 items (enough to fill a 3-column card — see "Fill the width"), then render a slice. Always request a short "source" + date and show them. Request only data that realistically appears in public sources: current figures, recent averages, a trend direction, top-N lists. NEVER ask for day-by-day or hour-by-hour historical series — ask for summary stats (current, 30-day average, trend) instead; that is also all a small card can show.
 3. Manual entry ONLY for inherently personal data (todos, birthdays, habits, journal-style notes). NEVER make the user hand-enter public data like prices, scores, headlines, or weather — that is a failed widget.
 
-widget.ai rules (it is slow, ~10-30s, and metered):
+widget.ai rules (it can take several seconds and is metered):
+- Make exactly one widget.ai request per refresh. Combine everything needed into one compact JSON shape; never chain separate AI lookups.
 - Request ONLY numbers and short labels — never prose fields (summaries, explanations, methodology). A widget shows data, not paragraphs; anything sentence-shaped must not appear in the request shape or the card. Headlines are the one allowed short-text exception; keep them under ~80 chars.
 - Successful responses are cached automatically per request text (TTL = max(refreshMs, 1h); the card's refresh button bypasses it), so calling widget.ai on every run is fine. Still save the last good data in widget.store and render it first, so the card paints instantly and survives lookup failures.
-- Always show a skeleton while it loads and an error state with a retry button if it throws.
+- Every lookup has a hard deadline. Always catch failures and replace the skeleton with a visible error state and retry button; no code path may leave the widget loading indefinitely.
 If the widget needs the user's location, team, or similar input: ask once with a small form, save it in widget.store, fetch automatically from then on, and offer a quiet "change" affordance (e.g. a small muted button showing the current value). Free-text city or ZIP is fine for location.
 
 ## Fill the width (widget.cols)
@@ -155,7 +159,7 @@ Read \`widget.cols\` at render time (a rerun may carry a different value), and d
 - The script reruns from scratch on every refresh (manual button, the refreshMs interval, or widget.refresh()), so it must be idempotent: read state from widget.store, render, done. Keep durable state in widget.store only — module-level variables are lost on rerun.
 - No imports, no external libraries, no <script>, <style>, <img>, audio, or video tags in html, no async top level (use an inner async function or promise chains).
 - Widgets that fetch data should set refreshMs — usually 600000-1800000 for getJSON polling, and at least 3600000 (1h) for ai-backed data (the cache rule above keeps reruns cheap) — and always show graceful loading and error states.
-- For user-entered data widgets (trackers, lists, counters): render an add form plus the stored items, with a way to delete items. Follow the pattern: read store -> render -> wire events -> on change, store.set then re-render. If a form has more than one input, include a submit button — Enter only implicitly submits single-input forms.
+- For user-entered data widgets (trackers, lists, counters): render an add form plus the stored items, with a way to delete items. Follow the pattern: read store -> register widget.on handlers once -> render -> on change, store.set then re-render. Every form must include an explicit type="submit" button.
 
 ## Build the body from the Daybreak kit (required)
 The user can resize a card to span 1-3 columns (see \`widget.cols\` and "Fill the width"), so the body must stay tidy at any width — never assume it is narrow, and never set a fixed pixel width. Use the fluid kit blocks below (a wide card automatically flows its rows into extra columns); don't hand-build multi-column layouts yourself.
@@ -236,6 +240,8 @@ const FORBIDDEN_SCRIPT_PATTERNS: { label: string; pattern: RegExp }[] = [
 export function validateGeneratedWidget(widget: GeneratedWidget): string[] {
   const issues: string[] = [];
   const combined = `${widget.html}\n${widget.script}`;
+  const hasControls = /<(?:form|button|input|select|textarea)\b/i.test(combined);
+  const hasForm = /<form\b/i.test(combined);
 
   if (widget.html.length > 12_000) issues.push("HTML is too large");
   if (widget.script.length > 40_000) issues.push("Script is too large");
@@ -248,6 +254,16 @@ export function validateGeneratedWidget(widget: GeneratedWidget): string[] {
     if (pattern.test(widget.script)) issues.push(`Script uses forbidden ${label}`);
   }
 
+  if (/\.addEventListener\s*\(|\.on(?:click|submit|change|input|keydown)\s*=/.test(widget.script)) {
+    issues.push("Widget uses fragile direct event listeners instead of widget.on");
+  }
+  if (hasControls && !/\bwidget\.on\s*\(/.test(widget.script)) {
+    issues.push("Interactive widget does not use delegated widget.on handlers");
+  }
+  if (hasForm && !/<(?:button|input)\b[^>]*\btype\s*=\s*["']submit["']/i.test(combined)) {
+    issues.push("Form has no explicit submit control");
+  }
+
   const usesData = /widget\.(?:getJSON|ai)\s*\(/.test(widget.script);
   if (usesData) {
     if (widget.refreshMs == null) issues.push("Data widget has no refresh interval");
@@ -256,9 +272,15 @@ export function validateGeneratedWidget(widget: GeneratedWidget): string[] {
       issues.push("Data widget has no recoverable error path");
     }
     if (!/(?:retry|try again)/i.test(combined)) issues.push("Data widget has no retry control");
+    if (!/widget\.store\.get\s*\(/.test(widget.script) || !/widget\.store\.set\s*\(/.test(widget.script)) {
+      issues.push("Data widget does not persist and render its last good data");
+    }
   }
   if (/widget\.ai\s*\(/.test(widget.script) && (widget.refreshMs ?? 0) < 3_600_000) {
     issues.push("AI-backed widget refreshes more often than once per hour");
+  }
+  if ((widget.script.match(/widget\.ai\s*\(/g) ?? []).length > 1) {
+    issues.push("Widget makes multiple AI lookups instead of one combined request");
   }
   if (/#[0-9a-f]{3,8}\b|\brgba?\s*\(/i.test(combined)) {
     issues.push("Widget uses hard-coded colors instead of design tokens");

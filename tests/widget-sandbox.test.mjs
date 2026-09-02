@@ -11,6 +11,9 @@ test("generated widget sandbox", async (t) => {
     assert.match(document, /id="widget-root" class="gw-root"/);
     assert.match(document, /daybreak-widget-v1/);
     assert.match(document, /new Function/);
+    assert.match(document, /widget\.on requires an event name, selector, and handler/);
+    assert.match(document, /The data lookup took too long\. Try again\./);
+    assert.match(document, /window\.clearTimeout\(pending\.timeout\)/);
     assert.match(document, /HTMLFormElement\.prototype\.submit/);
     assert.match(document, /HTMLFormElement\.prototype\.requestSubmit/);
     assert.match(document, /queueMicrotask\(\(\) => dispatchAppSubmit/);

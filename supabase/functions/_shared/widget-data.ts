@@ -11,6 +11,8 @@
 
 export type WidgetDataOptions = { model?: string; effort?: string };
 
+const DATA_LOOKUP_TIMEOUT_MS = 30_000;
+
 const SYSTEM = `You are a data source for a personal-dashboard widget. The request describes real-world data to look up and the exact JSON shape to return. Use web search whenever the request involves current or local real-world data. Respond with ONLY the JSON value (no prose, no markdown fences) in exactly the requested shape; use numbers for numeric values.
 
 Always return the best available data — never refuse because the exact granularity, time span, or locality isn't published:
@@ -56,22 +58,34 @@ export async function fetchWidgetData(
   apiKey: string,
   opts: WidgetDataOptions = {},
 ): Promise<unknown> {
-  const res = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: opts.model || "gpt-5-mini",
-      // Low effort keeps lookups quick; on Supabase there's no synchronous
-      // timeout to squeeze under, but runtime lookups still want to feel snappy.
-      reasoning: { effort: opts.effort || "low" },
-      tools: [{ type: "web_search" }],
-      instructions: SYSTEM,
-      input: prompt,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      signal: AbortSignal.timeout(DATA_LOOKUP_TIMEOUT_MS),
+      body: JSON.stringify({
+        model: opts.model || "gpt-5-mini",
+        reasoning: { effort: opts.effort || "low" },
+        tools: [{ type: "web_search" }],
+        max_tool_calls: 2,
+        max_output_tokens: 4_000,
+        text: { verbosity: "low" },
+        prompt_cache_key: "daybreak-widget-data-v2",
+        instructions: SYSTEM,
+        input: prompt,
+      }),
+    });
+  } catch (error) {
+    const name = error && typeof error === "object" && "name" in error ? String(error.name) : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new Error("The data lookup took longer than 30 seconds. Try again.");
+    }
+    throw error;
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");

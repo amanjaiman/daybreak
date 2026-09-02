@@ -69,7 +69,9 @@ How it fits together:
   of losing the widget); and
   `widget-data` answers runtime `widget.ai(...)` lookups (OpenAI + web search,
   for real-world data with no free API — local gas prices, rankings, current
-  headlines, …). The finished widget spec is stored (and runs) in your
+  headlines, …). Runtime lookups default independently to GPT-5 mini with low
+  reasoning, two tool calls, and a 30-second deadline; they never inherit the
+  heavier generation model. The finished widget spec is stored (and runs) in your
   browser's localStorage. Cores in
   [`supabase/functions/_shared/`](supabase/functions/_shared) are plain
   `fetch`-only TS so the Vite dev middleware runs the same code in-process.

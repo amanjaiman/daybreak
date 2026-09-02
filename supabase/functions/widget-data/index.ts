@@ -27,7 +27,8 @@ Deno.serve(async (req) => {
 
   try {
     const data = await fetchWidgetData(prompt.trim(), apiKey, {
-      model: Deno.env.get("OPENAI_DATA_MODEL") || Deno.env.get("OPENAI_MODEL") || undefined,
+      // Runtime lookups must never inherit the heavier generation model.
+      model: Deno.env.get("OPENAI_DATA_MODEL") || undefined,
       effort: Deno.env.get("OPENAI_DATA_REASONING_EFFORT") || undefined,
     });
     return json(200, { data });

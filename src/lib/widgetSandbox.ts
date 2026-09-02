@@ -67,7 +67,7 @@ function widgetSandboxRuntime() {
   let currentCols = 1;
   const requests = new Map<
     number,
-    { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }
+    { resolve: (value: unknown) => void; reject: (reason?: unknown) => void; timeout: number }
   >();
 
   const send = (type: string, payload: Record<string, unknown> = {}) => {
@@ -104,7 +104,11 @@ function widgetSandboxRuntime() {
   const rpc = (method: "getJSON" | "ai", value: string) =>
     new Promise<unknown>((resolve, reject) => {
       const id = ++requestSequence;
-      requests.set(id, { resolve, reject });
+      const timeout = window.setTimeout(() => {
+        requests.delete(id);
+        reject(new Error("The data lookup took too long. Try again."));
+      }, 40_000);
+      requests.set(id, { resolve, reject, timeout });
       send("rpc", { id, method, value });
     });
 
@@ -136,6 +140,27 @@ function widgetSandboxRuntime() {
       },
       getJSON: (url: string) => rpc("getJSON", url),
       ai: (request: string) => rpc("ai", request),
+      on: (
+        eventName: string,
+        selector: string,
+        handler: (event: Event, matched: Element) => unknown,
+      ) => {
+        if (!eventName || !selector || typeof handler !== "function") {
+          throw new Error("widget.on requires an event name, selector, and handler");
+        }
+        root.addEventListener(eventName, (event) => {
+          const origin = event.target instanceof Element ? event.target : null;
+          const matched = origin?.closest(selector) ?? null;
+          if (!matched || !root.contains(matched)) return;
+          try {
+            Promise.resolve(handler(event, matched)).catch((error) =>
+              send("runtime-error", { message: errorMessage(error) }),
+            );
+          } catch (error) {
+            send("runtime-error", { message: errorMessage(error) });
+          }
+        });
+      },
       esc,
       sparkline,
       refresh: () => send("refresh"),
@@ -165,6 +190,7 @@ function widgetSandboxRuntime() {
       const pending = requests.get(message.payload?.id);
       if (!pending) return;
       requests.delete(message.payload.id);
+      window.clearTimeout(pending.timeout);
       if (message.payload.ok) pending.resolve(message.payload.value);
       else pending.reject(new Error(message.payload.error || "Widget request failed"));
     }

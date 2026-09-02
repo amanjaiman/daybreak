@@ -29,7 +29,7 @@ test("background widget generation lifecycle", async (t) => {
     assert.equal(body.reasoning.effort, "medium");
     assert.equal(body.max_output_tokens, 12_000);
     assert.equal(body.max_tool_calls, 2);
-    assert.equal(body.prompt_cache_key, "daybreak-widget-v4-build");
+    assert.equal(body.prompt_cache_key, "daybreak-widget-v5-build");
     assert.match(body.instructions, /Do not search for current values/);
     assert.equal(body.text.verbosity, "low");
     assert.equal(body.text.format.type, "json_schema");
@@ -83,7 +83,7 @@ test("background widget generation lifecycle", async (t) => {
     );
     const body = JSON.parse(request.init.body);
     assert.equal(body.background, true);
-    assert.equal(body.prompt_cache_key, "daybreak-widget-v4-repair");
+    assert.equal(body.prompt_cache_key, "daybreak-widget-v5-repair");
     assert.equal(body.reasoning.effort, "medium");
     assert.equal(body.max_output_tokens, 10_000);
     assert.equal(body.tools, undefined);
@@ -108,6 +108,45 @@ test("background widget generation lifecycle", async (t) => {
     assert.ok(issues.includes("Data widget has no loading state"));
     assert.ok(issues.includes("Data widget has no recoverable error path"));
     assert.ok(issues.includes("Data widget has no retry control"));
+    assert.ok(issues.includes("Data widget does not persist and render its last good data"));
+  });
+
+  await t.test("rejects multiple metered AI lookups in one widget", () => {
+    const issues = validateGeneratedWidget({
+      title: "Scores",
+      icon: "trophy",
+      html: '<div class="skeleton"></div><button type="button">Try again</button>',
+      script: 'widget.on("click", "button", retry); widget.store.get(); widget.ai("games").catch(retry); widget.ai("standings").then(widget.store.set);',
+      refreshMs: 3_600_000,
+    });
+
+    assert.ok(issues.includes("Widget makes multiple AI lookups instead of one combined request"));
+  });
+
+  await t.test("rejects fragile controls before they are published", () => {
+    const issues = validateGeneratedWidget({
+      title: "Planner",
+      icon: "calendar",
+      html: '<form class="gw-form"><input class="gw-input"><button type="button">Add</button></form>',
+      script: 'widget.root.querySelector("form").addEventListener("submit", render);',
+      refreshMs: null,
+    });
+
+    assert.ok(issues.includes("Widget uses fragile direct event listeners instead of widget.on"));
+    assert.ok(issues.includes("Interactive widget does not use delegated widget.on handlers"));
+    assert.ok(issues.includes("Form has no explicit submit control"));
+  });
+
+  await t.test("accepts delegated controls with an explicit submit action", () => {
+    const issues = validateGeneratedWidget({
+      title: "Planner",
+      icon: "calendar",
+      html: '<form class="gw-form"><input class="gw-input"><button type="submit">Add</button></form>',
+      script: 'widget.on("submit", "form", (event) => { event.preventDefault(); widget.store.set([]); });',
+      refreshMs: null,
+    });
+
+    assert.deepEqual(issues, []);
   });
 
   await t.test("keeps queued and in-progress responses pending", async () => {
