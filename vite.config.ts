@@ -294,7 +294,7 @@ export default defineConfig(({ mode }) => {
     effort: env.OPENAI_REPAIR_REASONING_EFFORT || env.OPENAI_REVIEW_REASONING_EFFORT || undefined,
   }
   const dataOpts = {
-    model: env.OPENAI_DATA_MODEL || env.OPENAI_MODEL || undefined,
+    model: env.OPENAI_DATA_MODEL || undefined,
     effort: env.OPENAI_DATA_REASONING_EFFORT || undefined,
   }
   return {

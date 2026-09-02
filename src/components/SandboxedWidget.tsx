@@ -98,12 +98,14 @@ export function SandboxedWidget({ widget, runKey, bypassAiCache, hidden, onError
           if (!isAllowedWidgetUrl(value)) throw new Error("That data URL is not allowed");
           let data: unknown;
           try {
-            const response = await fetch(value);
+            const response = await fetch(value, { signal: AbortSignal.timeout(12_000) });
             if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
             data = await response.json();
           } catch (error) {
             if (!(error instanceof TypeError)) throw error;
-            const response = await fetch(`/api/proxy?url=${encodeURIComponent(value)}`);
+            const response = await fetch(`/api/proxy?url=${encodeURIComponent(value)}`, {
+              signal: AbortSignal.timeout(12_000),
+            });
             const body = (await response.json().catch(() => ({}))) as { error?: string };
             if (!response.ok) throw new Error(body.error ?? `${response.status} ${response.statusText}`);
             data = body;
@@ -131,6 +133,7 @@ export function SandboxedWidget({ widget, runKey, bypassAiCache, hidden, onError
           method: "POST",
           headers: fnHeaders(),
           body: JSON.stringify({ prompt: value }),
+          signal: AbortSignal.timeout(35_000),
         });
         const body = (await response.json().catch(() => ({}))) as { data?: unknown; error?: string };
         if (!response.ok) throw new Error(body.error ?? `${response.status} ${response.statusText}`);
@@ -139,7 +142,14 @@ export function SandboxedWidget({ widget, runKey, bypassAiCache, hidden, onError
         localStorage.setItem(cacheKey, JSON.stringify(Object.fromEntries(entries)));
         respond(frameWindow, id, true, body.data);
       } catch (error) {
-        respond(frameWindow, id, false, undefined, error instanceof Error ? error.message : String(error));
+        const timedOut = error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError");
+        respond(
+          frameWindow,
+          id,
+          false,
+          undefined,
+          timedOut ? "The data lookup took too long. Try again." : error instanceof Error ? error.message : String(error),
+        );
       }
     };
 
