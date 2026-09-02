@@ -70,7 +70,7 @@ export function CustomWidgetCard({ widget }: { widget: CustomWidget }) {
           <div className="skeleton" style={{ height: 16, width: "45%" }} />
           <p className="widget__pending-note">
             {widget.generationStage === "review"
-              ? "Reviewing and polishing your widget…"
+              ? "Fixing a quality issue in your widget…"
               : "Designing and building your widget…"} You can leave and come back.
           </p>
         </div>

@@ -5,7 +5,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { corsHeaders, json } from "../_shared/cors.ts";
-import { getWidgetGeneration, startWidgetReview } from "../_shared/generate.ts";
+import { getWidgetGeneration, startWidgetRepair } from "../_shared/generate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const { data: row, error } = await supabase
     .from("widget_jobs")
-    .select("status, result, error, openai_response_id, prompt, generation_stage, stage_started_at, draft, created_at")
+    .select("status, result, error, openai_response_id, prompt, generation_stage, stage_started_at, draft, review_error, created_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -39,8 +39,11 @@ Deno.serve(async (req) => {
 
   const stage = (row.generation_stage ?? "build") as "build" | "review_starting" | "review";
   let draft = row.draft as Record<string, unknown> | null;
+  const repairing = typeof row.review_error === "string" && row.review_error.startsWith("repair:");
   const publishDraft = async (reviewError: string) => {
-    if (!draft) return null;
+    // A repair draft failed validation and must never be published as a
+    // fallback. This path remains only for valid drafts from legacy review jobs.
+    if (!draft || repairing) return null;
     await supabase
       .from("widget_jobs")
       .update({ status: "done", result: draft, review_error: reviewError })
@@ -48,10 +51,19 @@ Deno.serve(async (req) => {
       .eq("status", "pending");
     return json(200, { status: "done", widget: draft, reviewFallback: true });
   };
+  const failRepair = async (message: string) => {
+    await supabase
+      .from("widget_jobs")
+      .update({ status: "error", error: message })
+      .eq("id", id)
+      .eq("status", "pending");
+    return json(200, { status: "error", error: message });
+  };
 
   if (stage === "review_starting") {
     const stageStartedAt = Date.parse(row.stage_started_at as string);
     if (Number.isFinite(stageStartedAt) && Date.now() - stageStartedAt >= REVIEW_START_TIMEOUT_MS) {
+      if (repairing) return await failRepair("The generated widget could not be repaired in time. Try again.");
       const fallback = await publishDraft("Review did not start in time; published the validated draft.");
       if (fallback) return fallback;
     }
@@ -72,6 +84,7 @@ Deno.serve(async (req) => {
       const createdAt = Date.parse(row.created_at as string);
       if (Number.isFinite(createdAt) && Date.now() - createdAt >= GENERATION_TIMEOUT_MS) {
         if (stage === "review") {
+          if (repairing) return await failRepair("The generated widget repair exceeded the deadline. Try again.");
           const fallback = await publishDraft("Review exceeded the generation deadline; published the validated draft.");
           if (fallback) return fallback;
         }
@@ -93,11 +106,17 @@ Deno.serve(async (req) => {
     return json(200, { ...generation, stage: stage === "build" ? "build" : "review" });
   }
 
-  if (generation.status === "done" && stage === "build") {
+  if (generation.status === "invalid" && stage === "build") {
     const now = new Date().toISOString();
+    const repairMarker = `repair:${generation.issues.join("; ")}`;
     const { data: claimed } = await supabase
       .from("widget_jobs")
-      .update({ generation_stage: "review_starting", stage_started_at: now, draft: generation.widget })
+      .update({
+        generation_stage: "review_starting",
+        stage_started_at: now,
+        draft: generation.widget,
+        review_error: repairMarker,
+      })
       .eq("id", id)
       .eq("status", "pending")
       .eq("generation_stage", "build")
@@ -106,39 +125,53 @@ Deno.serve(async (req) => {
     if (!claimed) return json(200, { status: "pending", stage: "review" });
     draft = generation.widget;
 
-    let reviewId: string;
+    let repairId: string;
     try {
-      reviewId = await startWidgetReview(row.prompt as string, generation.widget, apiKey, {
-        model: Deno.env.get("OPENAI_REVIEW_MODEL") || Deno.env.get("OPENAI_MODEL") || undefined,
-        effort: Deno.env.get("OPENAI_REVIEW_REASONING_EFFORT") || undefined,
+      repairId = await startWidgetRepair(row.prompt as string, generation.widget, generation.issues, apiKey, {
+        model:
+          Deno.env.get("OPENAI_REPAIR_MODEL") ||
+          Deno.env.get("OPENAI_REVIEW_MODEL") ||
+          Deno.env.get("OPENAI_MODEL") ||
+          undefined,
+        effort:
+          Deno.env.get("OPENAI_REPAIR_REASONING_EFFORT") ||
+          Deno.env.get("OPENAI_REVIEW_REASONING_EFFORT") ||
+          undefined,
       });
     } catch (err) {
-      const fallback = await publishDraft(
-        err instanceof Error ? err.message : "Review failed to start; published the validated draft.",
+      return await failRepair(
+        err instanceof Error ? err.message : "The generated widget failed checks and repair did not start. Try again.",
       );
-      if (fallback) return fallback;
-      return json(500, { status: "error", error: "Review failed and no validated draft was available." });
     }
 
     await supabase
       .from("widget_jobs")
-      .update({ generation_stage: "review", stage_started_at: new Date().toISOString(), openai_response_id: reviewId })
+      .update({ generation_stage: "review", stage_started_at: new Date().toISOString(), openai_response_id: repairId })
       .eq("id", id)
       .eq("status", "pending")
       .eq("generation_stage", "review_starting");
     return json(200, { status: "pending", stage: "review" });
   }
 
+  if (generation.status === "invalid") {
+    if (stage === "review" && !repairing) {
+      const fallback = await publishDraft(`Legacy review failed checks: ${generation.issues.join("; ")}`);
+      if (fallback) return fallback;
+    }
+    return await failRepair(`The generated widget still failed quality checks: ${generation.issues.join("; ")}. Try again.`);
+  }
+
   if (generation.status === "done") {
     await supabase
       .from("widget_jobs")
-      .update({ status: "done", result: generation.widget })
+      .update({ status: "done", result: generation.widget, draft: null, review_error: null })
       .eq("id", id)
       .eq("status", "pending");
-    return json(200, { status: "done", widget: generation.widget, reviewed: stage === "review" });
+    return json(200, { status: "done", widget: generation.widget, repaired: stage === "review" && repairing });
   }
 
   if (stage === "review") {
+    if (repairing) return await failRepair(generation.error);
     const fallback = await publishDraft(generation.error);
     if (fallback) return fallback;
   }

@@ -40,7 +40,7 @@ Set up the Supabase backend once:
 ```bash
 supabase link --project-ref <your-project-ref>
 supabase db push                       # creates/updates the widget_jobs table
-supabase secrets set OPENAI_API_KEY=sk-...   # optionally OPENAI_MODEL / OPENAI_REVIEW_MODEL / OPENAI_DATA_MODEL / *_REASONING_EFFORT
+supabase secrets set OPENAI_API_KEY=sk-...   # optionally OPENAI_MODEL / OPENAI_REPAIR_MODEL / OPENAI_DATA_MODEL / *_REASONING_EFFORT
 supabase functions deploy             # deploys all three functions
 ```
 
@@ -61,10 +61,10 @@ How it fits together:
   `netlify.toml`.
 - The widget AI backends are three Supabase edge functions in
   [`supabase/functions/`](supabase/functions): `generate-widget` starts an
-  OpenAI background response (GPT-5.6 Sol with high reasoning + live web search), persists its response
+  OpenAI background response (GPT-5.6 Sol with medium reasoning and selective web search), persists its response
   id with a job row, and returns a Daybreak job id immediately;
-  `widget-status` retrieves the validated build, starts an independent review
-  pass, and publishes the reviewed result (or the validated draft if review fails) while it is polled
+  `widget-status` publishes a valid first pass immediately and starts one
+  targeted, tool-free repair only when deterministic checks reject it while it is polled
   (the frontend stores the job id, so a reload mid-generation resumes instead
   of losing the widget); and
   `widget-data` answers runtime `widget.ai(...)` lookups (OpenAI + web search,
